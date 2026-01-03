@@ -30,4 +30,4 @@ coverage/
 *.tmp
 *.temp
 
-plans/
+dev/
