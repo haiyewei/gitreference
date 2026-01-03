@@ -23,10 +23,10 @@ A lightweight CLI tool for managing reference code from Git repositories. Easily
 
 ```bash
 # Global installation (recommended)
-npm install -g gitreference
+npm install -g grf-cli
 
 # Or use npx without installation
-npx gitreference <command>
+npx grf-cli <command>
 ```
 
 ## Quick Start

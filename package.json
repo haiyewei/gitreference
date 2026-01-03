@@ -1,5 +1,5 @@
 {
-  "name": "gitreference",
+  "name": "grf-cli",
   "version": "1.0.0",
   "description": "A CLI tool for managing Git reference repositories - easily add, load, and sync reference code from any Git repository",
   "main": "dist/cli.js",

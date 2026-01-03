@@ -23,10 +23,10 @@
 
 ```bash
 # 全局安装（推荐）
-npm install -g gitreference
+npm install -g grf-cli
 
 # 或者使用 npx 无需安装
-npx gitreference <command>
+npx grf-cli <command>
 ```
 
 ## 快速开始
