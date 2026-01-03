@@ -1,0 +1,34 @@
+# 源代码（已编译到 dist）
+src/
+
+# 设计文档
+plans/
+
+# TypeScript 配置
+tsconfig.json
+
+# 开发依赖锁定文件
+package-lock.json
+
+# IDE 和编辑器配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试文件
+__tests__/
+*.test.ts
+*.spec.ts
+coverage/
+
+# Git 相关
+.git/
+.gitignore
+
+# 其他
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
