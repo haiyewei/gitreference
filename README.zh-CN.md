@@ -36,13 +36,13 @@ npx grf-cli <command>
 grf config init
 
 # 添加参考仓库
-grf add https://github.com/example/awesome-utils.git --alias utils
+grf add https://github.com/example/awesome-utils.git --name utils
 
 # 列出所有参考仓库
 grf list
 
 # 将参考代码加载到项目中
-grf load utils --path src/helpers
+grf load utils src/helpers
 
 # 更新所有参考到最新版本
 grf update
@@ -120,7 +120,7 @@ grf clean [name] [options]
 
 | 选项    | 简写 | 类型    | 默认值 | 描述               |
 | ------- | ---- | ------- | ------ | ------------------ |
-| --all   | -    | boolean | false  | 移除所有缓存的仓库 |
+| --all   | -a   | boolean | false  | 移除所有缓存的仓库 |
 | --force | -f   | boolean | false  | 跳过确认           |
 
 **示例：**
@@ -162,7 +162,7 @@ grf config [key] [value] [options]
 
 | 选项   | 简写 | 类型    | 默认值 | 描述             |
 | ------ | ---- | ------- | ------ | ---------------- |
-| --list | -    | boolean | false  | 显示所有配置     |
+| --list | -l   | boolean | false  | 显示所有配置     |
 | --path | -    | boolean | false  | 显示配置文件路径 |
 
 **有效的配置键：**
@@ -209,9 +209,11 @@ grf list [options]
 
 **选项：**
 
-| 选项   | 简写 | 类型    | 默认值 | 描述             |
-| ------ | ---- | ------- | ------ | ---------------- |
-| --json | -    | boolean | false  | 以 JSON 格式输出 |
+| 选项      | 简写 | 类型    | 默认值 | 描述                             |
+| --------- | ---- | ------- | ------ | -------------------------------- |
+| --json    | -    | boolean | false  | 以 JSON 格式输出                 |
+| --load    | -    | boolean | false  | 列出当前项目中已加载的参考代码   |
+| --verbose | -v   | boolean | false  | 显示详细输出                     |
 
 **示例：**
 
@@ -221,6 +223,12 @@ grf list
 
 # 以 JSON 格式列出
 grf list --json
+
+# 列出当前项目中已加载的参考代码
+grf list --load
+
+# 显示详细信息
+grf list --verbose
 ```
 
 ---

@@ -84,7 +84,7 @@ export function parseRepoUrl(url: string): ParsedRepoUrl {
 
   // HTTPS 格式: https://github.com/user/repo.git
   const httpsRegex = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?$/;
-  const httpsMatch = url.match(httpsRegex);
+  const httpsMatch = httpsRegex.exec(url);
   if (httpsMatch) {
     return {
       host: httpsMatch[1],
@@ -95,7 +95,7 @@ export function parseRepoUrl(url: string): ParsedRepoUrl {
 
   // SSH 格式: git@github.com:user/repo.git
   const sshRegex = /^git@([^:]+):([^/]+)\/([^/]+?)(?:\.git)?$/;
-  const sshMatch = url.match(sshRegex);
+  const sshMatch = sshRegex.exec(url);
   if (sshMatch) {
     return {
       host: sshMatch[1],

@@ -139,7 +139,7 @@ export async function getAllSyncStatus(
  */
 export async function syncEntry(
   entry: LoadingEntry,
-  force: boolean = false,
+  force = false,
   projectRoot: string = process.cwd(),
 ): Promise<SyncResult> {
   const result: SyncResult = {
@@ -221,7 +221,7 @@ export async function syncEntry(
  * @returns 同步结果列表
  */
 export async function syncAll(
-  force: boolean = false,
+  force = false,
   projectRoot: string = process.cwd(),
 ): Promise<SyncResult[]> {
   const entries = await loading.getEntries();

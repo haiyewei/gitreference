@@ -36,13 +36,13 @@ npx grf-cli <command>
 grf config init
 
 # Add a reference repository
-grf add https://github.com/example/awesome-utils.git --alias utils
+grf add https://github.com/example/awesome-utils.git --name utils
 
 # List all reference repositories
 grf list
 
 # Load reference code into your project
-grf load utils --path src/helpers
+grf load utils src/helpers
 
 # Update all references to latest
 grf update
@@ -120,7 +120,7 @@ grf clean [name] [options]
 
 | Option  | Short | Type    | Default | Description                    |
 | ------- | ----- | ------- | ------- | ------------------------------ |
-| --all   | -     | boolean | false   | Remove all cached repositories |
+| --all   | -a    | boolean | false   | Remove all cached repositories |
 | --force | -f    | boolean | false   | Skip confirmation              |
 
 **Examples:**
@@ -162,7 +162,7 @@ grf config [key] [value] [options]
 
 | Option | Short | Type    | Default | Description                  |
 | ------ | ----- | ------- | ------- | ---------------------------- |
-| --list | -     | boolean | false   | Show all configuration       |
+| --list | -l    | boolean | false   | Show all configuration       |
 | --path | -     | boolean | false   | Show configuration file path |
 
 **Valid Configuration Keys:**
@@ -209,9 +209,11 @@ grf list [options]
 
 **Options:**
 
-| Option | Short | Type    | Default | Description           |
-| ------ | ----- | ------- | ------- | --------------------- |
-| --json | -     | boolean | false   | Output in JSON format |
+| Option    | Short | Type    | Default | Description                              |
+| --------- | ----- | ------- | ------- | ---------------------------------------- |
+| --json    | -     | boolean | false   | Output in JSON format                    |
+| --load    | -     | boolean | false   | List loaded references in current project |
+| --verbose | -v    | boolean | false   | Show detailed output                     |
 
 **Examples:**
 
@@ -221,6 +223,12 @@ grf list
 
 # List in JSON format
 grf list --json
+
+# List loaded references in current project
+grf list --load
+
+# Show detailed output
+grf list --verbose
 ```
 
 ---

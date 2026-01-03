@@ -7,6 +7,23 @@ import fs from "fs-extra";
 import { getLoadingStatePath, ensureGrfDirs } from "./paths.js";
 
 // ============================================================================
+// 工具函数
+// ============================================================================
+
+/**
+ * 生成加载状态的唯一键
+ * @param workingDirectory 工作目录绝对路径
+ * @param targetPath 加载到的目标路径
+ * @returns 格式为 `${workingDirectory}::${targetPath}` 的唯一键
+ */
+export function generateLoadingKey(
+  workingDirectory: string,
+  targetPath: string,
+): string {
+  return `${workingDirectory}::${targetPath}`;
+}
+
+// ============================================================================
 // 类型定义
 // ============================================================================
 
@@ -20,6 +37,8 @@ export interface RepoLoadingState {
   loadedAt: string;
   /** 加载的分支 */
   branch?: string;
+  /** 工作目录绝对路径 */
+  workingDirectory: string;
 }
 
 /**
@@ -64,7 +83,7 @@ export class LoadingStateManager {
         this.cache = parsed as LoadingStateIndex;
       }
       return this.cache;
-    } catch (error) {
+    } catch {
       // 文件不存在或解析失败，返回空结构
       this.cache = { loadedRepos: {} };
       return this.cache;
@@ -93,48 +112,66 @@ export class LoadingStateManager {
 
   /**
    * 获取单个仓库的加载状态
-   * @param repoName 仓库名称
+   * @param workingDirectory 工作目录绝对路径
+   * @param targetPath 加载到的目标路径
    * @returns 仓库的加载状态，如果不存在则返回 undefined
    */
-  async get(repoName: string): Promise<RepoLoadingState | undefined> {
+  async get(
+    workingDirectory: string,
+    targetPath: string,
+  ): Promise<RepoLoadingState | undefined> {
     const data = await this.read();
-    return data.loadedRepos[repoName];
+    const key = generateLoadingKey(workingDirectory, targetPath);
+    return data.loadedRepos[key];
   }
 
   /**
    * 设置仓库的加载状态
-   * @param repoName 仓库名称
+   * @param workingDirectory 工作目录绝对路径
+   * @param targetPath 加载到的目标路径
    * @param state 加载状态
    */
-  async set(repoName: string, state: RepoLoadingState): Promise<void> {
+  async set(
+    workingDirectory: string,
+    targetPath: string,
+    state: RepoLoadingState,
+  ): Promise<void> {
     const data = await this.read();
-    data.loadedRepos[repoName] = state;
+    const key = generateLoadingKey(workingDirectory, targetPath);
+    data.loadedRepos[key] = state;
     await this.write(data);
   }
 
   /**
    * 移除仓库的加载状态
-   * @param repoName 仓库名称
+   * @param workingDirectory 工作目录绝对路径
+   * @param targetPath 加载到的目标路径
    * @returns 是否成功移除（如果仓库不存在则返回 false）
    */
-  async remove(repoName: string): Promise<boolean> {
+  async remove(workingDirectory: string, targetPath: string): Promise<boolean> {
     const data = await this.read();
-    if (!(repoName in data.loadedRepos)) {
+    const key = generateLoadingKey(workingDirectory, targetPath);
+    if (!(key in data.loadedRepos)) {
       return false;
     }
-    delete data.loadedRepos[repoName];
+    delete data.loadedRepos[key];
     await this.write(data);
     return true;
   }
 
   /**
    * 检查仓库是否已加载
-   * @param repoName 仓库名称
+   * @param workingDirectory 工作目录绝对路径
+   * @param targetPath 加载到的目标路径
    * @returns 是否已加载
    */
-  async isLoaded(repoName: string): Promise<boolean> {
+  async isLoaded(
+    workingDirectory: string,
+    targetPath: string,
+  ): Promise<boolean> {
     const data = await this.read();
-    return repoName in data.loadedRepos;
+    const key = generateLoadingKey(workingDirectory, targetPath);
+    return key in data.loadedRepos;
   }
 
   /**
@@ -203,50 +240,61 @@ export async function getAllLoadingStates(): Promise<
 
 /**
  * 获取单个仓库的加载状态
- * @param repoName 仓库名称
+ * @param workingDirectory 工作目录绝对路径
+ * @param targetPath 加载到的目标路径
  * @returns 仓库的加载状态，如果不存在则返回 undefined
  */
 export async function getLoadingState(
-  repoName: string,
+  workingDirectory: string,
+  targetPath: string,
 ): Promise<RepoLoadingState | undefined> {
-  return loadingState.get(repoName);
+  return loadingState.get(workingDirectory, targetPath);
 }
 
 /**
  * 标记仓库为已加载
- * @param repoName 仓库名称
  * @param targetPath 加载到的目标路径
+ * @param workingDirectory 工作目录绝对路径
  * @param branch 加载的分支（可选）
  */
 export async function markAsLoaded(
-  repoName: string,
   targetPath: string,
+  workingDirectory: string,
   branch?: string,
 ): Promise<void> {
   const state: RepoLoadingState = {
     targetPath,
     loadedAt: new Date().toISOString(),
+    workingDirectory,
   };
   if (branch !== undefined) {
     state.branch = branch;
   }
-  await loadingState.set(repoName, state);
+  await loadingState.set(workingDirectory, targetPath, state);
 }
 
 /**
  * 标记仓库为已卸载
- * @param repoName 仓库名称
+ * @param workingDirectory 工作目录绝对路径
+ * @param targetPath 加载到的目标路径
  * @returns 是否成功移除（如果仓库不存在则返回 false）
  */
-export async function markAsUnloaded(repoName: string): Promise<boolean> {
-  return loadingState.remove(repoName);
+export async function markAsUnloaded(
+  workingDirectory: string,
+  targetPath: string,
+): Promise<boolean> {
+  return loadingState.remove(workingDirectory, targetPath);
 }
 
 /**
  * 检查仓库是否已加载
- * @param repoName 仓库名称
+ * @param workingDirectory 工作目录绝对路径
+ * @param targetPath 加载到的目标路径
  * @returns 是否已加载
  */
-export async function isRepoLoaded(repoName: string): Promise<boolean> {
-  return loadingState.isLoaded(repoName);
+export async function isRepoLoaded(
+  workingDirectory: string,
+  targetPath: string,
+): Promise<boolean> {
+  return loadingState.isLoaded(workingDirectory, targetPath);
 }

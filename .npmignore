@@ -26,6 +26,19 @@ coverage/
 .git/
 .gitignore
 
+# 代码质量工具配置
+eslint.config.mjs
+.prettierrc
+.prettierignore
+.editorconfig
+.lintstagedrc.json
+knip.json
+.eslintcache
+.prettiercache
+
+# Husky Git Hooks
+.husky/
+
 # 其他
 .DS_Store
 Thumbs.db

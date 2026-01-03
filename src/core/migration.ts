@@ -18,7 +18,7 @@ import {
   CONFIG_DEFAULTS,
 } from "./config-manager.js";
 import { reposIndex } from "./repos-index.js";
-import { GlobalConfig, RepoEntry } from "../types/index.js";
+import { RepoEntry } from "../types/index.js";
 
 // ============================================================================
 // 类型定义
@@ -94,11 +94,7 @@ export async function needsMigration(): Promise<boolean> {
     if (!reposIndexExists) {
       // 如果旧配置有 repos 数据，需要迁移
       const legacyConfig = await readLegacyConfig();
-      if (
-        legacyConfig &&
-        legacyConfig.repos &&
-        Object.keys(legacyConfig.repos).length > 0
-      ) {
+      if (legacyConfig?.repos && Object.keys(legacyConfig.repos).length > 0) {
         return true;
       }
     }

@@ -1,6 +1,6 @@
 {
   "name": "grf-cli",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A CLI tool for managing Git reference repositories - easily add, load, and sync reference code from any Git repository",
   "main": "dist/cli.js",
   "types": "dist/types/index.d.ts",
@@ -13,7 +13,18 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "check:fix": "npm run lint:fix && npm run format",
+    "knip": "knip",
+    "audit:check": "npm audit",
+    "audit:fix": "npm audit fix",
+    "prepare": "husky"
   },
   "keywords": [
     "git",
@@ -51,9 +62,18 @@
     "ora": "^9.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/fs-extra": "^11.0.4",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^25.0.3",
-    "typescript": "^5.9.3"
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "husky": "^9.1.7",
+    "knip": "^5.79.0",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.51.0"
   }
 }

@@ -30,4 +30,11 @@ coverage/
 *.tmp
 *.temp
 
+# 开发目录
 dev/
+
+# ESLint 缓存
+.eslintcache
+
+# Prettier 缓存
+.prettiercache

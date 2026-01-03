@@ -13,10 +13,8 @@ import { getLoadingStatePath } from "./paths.js";
 import {
   loadingState,
   getAllLoadingStates,
-  getLoadingState,
   markAsLoaded,
   markAsUnloaded,
-  isRepoLoaded,
   type RepoLoadingState,
 } from "./loading-state.js";
 
@@ -24,22 +22,23 @@ import {
 const CONFIG_VERSION = "1.0.0";
 
 /**
- * 内部缓存：存储完整的 LoadingEntry 数据
- * 由于新的 loading-state.ts 只存储简化的状态，
- * 我们需要在内存中维护完整的条目信息
- */
-let entriesCache: LoadingEntry[] | null = null;
-
-/**
- * 从 RepoLoadingState 和仓库名称构建 LoadingEntry
- * @param repoName 仓库名称
+ * 从 RepoLoadingState 和键构建 LoadingEntry
+ * @param key 唯一键 (workingDirectory::targetPath)
  * @param state 加载状态
  * @returns LoadingEntry 对象
  */
 function buildEntryFromState(
-  repoName: string,
+  key: string,
   state: RepoLoadingState,
 ): LoadingEntry {
+  // 从 targetPath 中提取 repoName（用于显示）
+  // targetPath 格式通常为 .gitreference/owner/repo 或自定义路径
+  const pathParts = state.targetPath.split("/");
+  const repoName =
+    pathParts.length >= 3
+      ? `${pathParts[pathParts.length - 2]}/${pathParts[pathParts.length - 1]}`
+      : pathParts[pathParts.length - 1] || state.targetPath;
+
   return {
     id: randomUUID(), // 每次构建时生成新 ID（兼容层限制）
     repoName,
@@ -48,6 +47,7 @@ function buildEntryFromState(
     branch: state.branch,
     targetPath: state.targetPath,
     loadedAt: state.loadedAt,
+    workingDirectory: state.workingDirectory,
   };
 }
 
@@ -69,8 +69,8 @@ export async function readLoadingConfig(): Promise<LoadingConfig> {
   const states = await getAllLoadingStates();
 
   // 转换为 LoadingEntry 格式
-  const entries: LoadingEntry[] = Object.entries(states).map(
-    ([repoName, state]) => buildEntryFromState(repoName, state),
+  const entries: LoadingEntry[] = Object.entries(states).map(([key, state]) =>
+    buildEntryFromState(key, state),
   );
 
   return {
@@ -90,25 +90,24 @@ export async function writeLoadingConfig(config: LoadingConfig): Promise<void> {
 
   // 逐个添加条目
   for (const entry of config.entries) {
-    await markAsLoaded(entry.repoName, entry.targetPath, entry.branch);
+    // 兼容层：旧的 LoadingEntry 没有 workingDirectory，使用空字符串作为占位
+    const workingDir = entry.workingDirectory || "";
+    await markAsLoaded(entry.targetPath, workingDir, entry.branch);
   }
-
-  // 更新缓存
-  entriesCache = config.entries;
 }
 
 /**
  * 添加加载条目
- * @param entry 加载条目（不含 id 和 loadedAt）
+ * @param entry 加载条目（不含 id 和 loadedAt），必须包含 workingDirectory
  * @returns 添加的完整条目
  */
 export async function addEntry(
-  entry: Omit<LoadingEntry, "id" | "loadedAt">,
+  entry: Omit<LoadingEntry, "id" | "loadedAt"> & { workingDirectory: string },
 ): Promise<LoadingEntry> {
   const loadedAt = new Date().toISOString();
 
-  // 使用新模块标记为已加载
-  await markAsLoaded(entry.repoName, entry.targetPath, entry.branch);
+  // 使用新模块标记为已加载（使用 workingDirectory + targetPath 作为唯一键）
+  await markAsLoaded(entry.targetPath, entry.workingDirectory, entry.branch);
 
   // 构建完整的条目
   const newEntry: LoadingEntry = {
@@ -155,9 +154,9 @@ export async function getEntryByTargetPath(
   const normalizedTarget = path.normalize(targetPath);
 
   // 查找匹配的条目
-  for (const [repoName, state] of Object.entries(states)) {
+  for (const [key, state] of Object.entries(states)) {
     if (path.normalize(state.targetPath) === normalizedTarget) {
-      return buildEntryFromState(repoName, state);
+      return buildEntryFromState(key, state);
     }
   }
 
@@ -175,10 +174,10 @@ export async function getEntriesByRepoName(
   const states = await getAllLoadingStates();
   const results: LoadingEntry[] = [];
 
-  // 查找包含指定名称的仓库
-  for (const [name, state] of Object.entries(states)) {
-    if (name.includes(repoName)) {
-      results.push(buildEntryFromState(name, state));
+  // 查找包含指定名称的仓库（在 targetPath 中搜索）
+  for (const [key, state] of Object.entries(states)) {
+    if (state.targetPath.includes(repoName)) {
+      results.push(buildEntryFromState(key, state));
     }
   }
 
@@ -192,7 +191,7 @@ export async function getEntriesByRepoName(
  * @deprecated 新模块不支持按 ID 删除，此函数功能受限
  */
 export async function removeEntry(id: string): Promise<boolean> {
-  // 新模块不支持按 ID 删除，需要先找到对应的仓库名称
+  // 新模块不支持按 ID 删除，需要先找到对应的条目
   const entries = await getEntries();
   const entry = entries.find((e) => e.id === id);
 
@@ -200,8 +199,8 @@ export async function removeEntry(id: string): Promise<boolean> {
     return false;
   }
 
-  // 使用仓库名称删除
-  return markAsUnloaded(entry.repoName);
+  // 使用 workingDirectory + targetPath 删除
+  return markAsUnloaded(entry.workingDirectory || "", entry.targetPath);
 }
 
 /**
@@ -216,10 +215,10 @@ export async function removeEntryByTargetPath(
   const normalizedTarget = path.normalize(targetPath);
 
   // 查找匹配的条目
-  for (const [repoName, state] of Object.entries(states)) {
+  for (const [key, state] of Object.entries(states)) {
     if (path.normalize(state.targetPath) === normalizedTarget) {
-      const entry = buildEntryFromState(repoName, state);
-      await markAsUnloaded(repoName);
+      const entry = buildEntryFromState(key, state);
+      await markAsUnloaded(state.workingDirectory, state.targetPath);
       return entry;
     }
   }
@@ -232,7 +231,6 @@ export async function removeEntryByTargetPath(
  */
 export async function clearAllEntries(): Promise<void> {
   await loadingState.clear();
-  entriesCache = null;
 }
 
 /**
@@ -246,7 +244,7 @@ export async function updateEntry(
   id: string,
   updates: Partial<Omit<LoadingEntry, "id" | "loadedAt">>,
 ): Promise<LoadingEntry | undefined> {
-  // 新模块不支持按 ID 更新，需要先找到对应的仓库名称
+  // 新模块不支持按 ID 更新，需要先找到对应的条目
   const entries = await getEntries();
   const entry = entries.find((e) => e.id === id);
 
@@ -255,17 +253,19 @@ export async function updateEntry(
   }
 
   // 更新加载状态
-  const newRepoName = updates.repoName ?? entry.repoName;
+  const oldWorkingDir = entry.workingDirectory || "";
+  const oldTargetPath = entry.targetPath;
   const newTargetPath = updates.targetPath ?? entry.targetPath;
+  const newWorkingDir = updates.workingDirectory ?? oldWorkingDir;
   const newBranch = updates.branch ?? entry.branch;
 
-  // 如果仓库名称变了，需要先删除旧的
-  if (updates.repoName && updates.repoName !== entry.repoName) {
-    await markAsUnloaded(entry.repoName);
+  // 如果路径变了，需要先删除旧的
+  if (updates.targetPath && updates.targetPath !== entry.targetPath) {
+    await markAsUnloaded(oldWorkingDir, oldTargetPath);
   }
 
   // 设置新的状态
-  await markAsLoaded(newRepoName, newTargetPath, newBranch);
+  await markAsLoaded(newTargetPath, newWorkingDir, newBranch);
 
   // 返回更新后的条目
   return {

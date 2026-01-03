@@ -208,7 +208,7 @@ export async function updateGitignore(
     if (commentIndex !== -1) {
       // 找到现有的 gitreference 块，在最后一个条目后插入新条目
       // 首先需要找到该块的实际结束位置
-      let insertIndex = lastGitrefEntryIndex + 1;
+      const insertIndex = lastGitrefEntryIndex + 1;
 
       // 在现有块后插入新条目
       lines.splice(insertIndex, 0, trimmedEntry);

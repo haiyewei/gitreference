@@ -151,6 +151,9 @@ export interface LoadingEntry {
 
   /** 最后更新时间 */
   updatedAt?: string;
+
+  /** 工作目录绝对路径 */
+  workingDirectory?: string;
 }
 
 /**

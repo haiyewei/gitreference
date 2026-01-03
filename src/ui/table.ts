@@ -54,7 +54,7 @@ export function padStart(str: string, width: number): string {
 export function truncate(
   str: string,
   maxLength: number,
-  suffix: string = "...",
+  suffix = "...",
 ): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength - suffix.length) + suffix;
@@ -199,7 +199,7 @@ function applyColor(
  * ```
  */
 export function printKeyValue(
-  items: Array<{ key: string; value: string }>,
+  items: { key: string; value: string }[],
   options: { indent?: string; keyWidth?: number; separator?: string } = {},
 ): void {
   const { indent = "", keyWidth = 12, separator = ":" } = options;
@@ -215,7 +215,7 @@ export function printKeyValue(
  * @param length 分隔线长度
  * @param char 分隔字符，默认为 "-"
  */
-export function printSeparator(length: number, char: string = "-"): void {
+export function printSeparator(length: number, char = "-"): void {
   console.log(chalk.gray(char.repeat(length)));
 }
 
@@ -223,7 +223,7 @@ export function printSeparator(length: number, char: string = "-"): void {
  * 打印空行
  * @param count 空行数量，默认为 1
  */
-export function printEmptyLine(count: number = 1): void {
+export function printEmptyLine(count = 1): void {
   for (let i = 0; i < count; i++) {
     console.log();
   }

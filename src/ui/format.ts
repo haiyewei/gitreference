@@ -17,7 +17,7 @@ import chalk from "chalk";
  * shortCommit("abc1234567890", 10); // "abc1234567"
  * ```
  */
-export function shortCommit(commitId: string, length: number = 7): string {
+export function shortCommit(commitId: string, length = 7): string {
   return commitId.substring(0, length);
 }
 
@@ -100,7 +100,7 @@ function formatRelativeTime(date: Date): string {
  * formatBytes(0); // "0 Bytes"
  * ```
  */
-export function formatBytes(bytes: number, decimals: number = 2): string {
+export function formatBytes(bytes: number, decimals = 2): string {
   if (bytes === 0) return "0 Bytes";
 
   const k = 1024;
