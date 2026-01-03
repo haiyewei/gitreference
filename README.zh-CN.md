@@ -1,4 +1,4 @@
-[English](https://github.com/haiyewei/gitreference/blob/main/README.md) | 简体中文
+[English](https://github.com/haiyewei/grf-cli/blob/main/README.md) | 简体中文
 
 # Git Reference (grf)
 
@@ -458,7 +458,7 @@ grf 采用两阶段工作流来管理参考代码：
 
 ## 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](https://github.com/haiyewei/gitreference/blob/main/LICENSE) 文件。
+本项目采用 MIT 许可证 - 详见 [LICENSE](https://github.com/haiyewei/grf-cli/blob/main/LICENSE) 文件。
 
 ---
 
@@ -469,7 +469,7 @@ grf 采用两阶段工作流来管理参考代码：
 ### 开始
 
 1. Fork 本仓库
-2. 克隆你的 fork：`git clone https://github.com/your-username/gitreference.git`
+2. 克隆你的 fork：`git clone https://github.com/your-username/grf-cli.git`
 3. 安装依赖：`npm install`
 4. 创建功能分支：`git checkout -b feature/your-feature`
 

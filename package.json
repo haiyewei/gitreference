@@ -28,11 +28,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/haiyewei/gitreference.git"
+    "url": "git+https://github.com/haiyewei/grf-cli.git"
   },
-  "homepage": "https://github.com/haiyewei/gitreference#readme",
+  "homepage": "https://github.com/haiyewei/grf-cli#readme",
   "bugs": {
-    "url": "https://github.com/haiyewei/gitreference/issues"
+    "url": "https://github.com/haiyewei/grf-cli/issues"
   },
   "engines": {
     "node": ">=18.0.0"

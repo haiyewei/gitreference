@@ -1,6 +1,6 @@
 # Git Reference (grf)
 
-English | [简体中文](https://github.com/haiyewei/gitreference/blob/main/README.zh-CN.md)
+English | [简体中文](https://github.com/haiyewei/grf-cli/blob/main/README.zh-CN.md)
 
 A lightweight CLI tool for managing reference code from Git repositories. Easily add, load, and sync reference code into your projects without cluttering your main codebase.
 
@@ -458,7 +458,7 @@ grf follows a two-stage workflow to manage reference code:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/haiyewei/gitreference/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/haiyewei/grf-cli/blob/main/LICENSE) file for details.
 
 ---
 
@@ -469,7 +469,7 @@ Contributions are welcome! Here's how you can help:
 ### Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/your-username/gitreference.git`
+2. Clone your fork: `git clone https://github.com/your-username/grf-cli.git`
 3. Install dependencies: `npm install`
 4. Create a feature branch: `git checkout -b feature/your-feature`
 
