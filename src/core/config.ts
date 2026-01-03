@@ -1,30 +1,52 @@
 /**
- * grf 配置模块
- * 负责管理全局配置和仓库元信息的读写
+ * grf 配置模块 - 兼容层
+ *
+ * 此模块是一个兼容层，保持原有 API 不变，内部使用新的模块化架构：
+ * - paths.ts: 路径管理
+ * - config-manager.ts: 单配置文件管理
+ * - repos-index.ts: 仓库索引管理
+ * - migration.ts: 配置迁移工具
+ *
+ * 现有代码无需修改即可正常工作。
  */
 
 import fs from "fs-extra";
-import os from "os";
 import path from "path";
 import { GlobalConfig, RepoMeta, GrfError, ErrorCode } from "../types/index.js";
 
-/** grf 根目录名称 */
-const GRF_DIR_NAME = ".gitreference";
-/** 全局配置文件名 */
-const CONFIG_FILE_NAME = "config.json";
+// 导入新的模块化组件
+import {
+  getGrfRoot as getGrfRootFromPaths,
+  ensureGrfDirs,
+  getLegacyConfigPath,
+} from "./paths.js";
+import {
+  getAllConfigs,
+  setAllConfigs,
+  CONFIG_DEFAULTS,
+} from "./config-manager.js";
+import { reposIndex } from "./repos-index.js";
+import { ensureMigrated } from "./migration.js";
+
+// ============================================================================
+// 常量定义（保持向后兼容）
+// ============================================================================
+
 /** 仓库存储目录名 */
 const REPOS_DIR_NAME = "repos";
 /** 仓库元信息文件名 */
 const REPO_META_FILE_NAME = ".gitreference-meta.json";
-/** 当前配置版本 */
-const CONFIG_VERSION = "1.0.0";
+
+// ============================================================================
+// 路径相关函数（保持向后兼容）
+// ============================================================================
 
 /**
  * 获取 grf 根目录路径
  * @returns grf 根目录的绝对路径 (~/.gitreference/)
  */
 export function getGrfRoot(): string {
-  return path.join(os.homedir(), GRF_DIR_NAME);
+  return getGrfRootFromPaths();
 }
 
 /**
@@ -38,9 +60,10 @@ export function getReposRoot(): string {
 /**
  * 获取配置文件路径
  * @returns 配置文件的绝对路径 (~/.gitreference/config.json)
+ * @deprecated 新架构使用多个配置文件，此函数仅用于兼容
  */
 export function getConfigPath(): string {
-  return path.join(getGrfRoot(), CONFIG_FILE_NAME);
+  return getLegacyConfigPath();
 }
 
 /**
@@ -49,10 +72,10 @@ export function getConfigPath(): string {
  */
 export function getDefaultConfig(): GlobalConfig {
   return {
-    version: CONFIG_VERSION,
-    defaultBranch: "main",
-    shallowClone: true,
-    shallowDepth: 1,
+    version: CONFIG_DEFAULTS.VERSION,
+    defaultBranch: CONFIG_DEFAULTS.DEFAULT_BRANCH,
+    shallowClone: CONFIG_DEFAULTS.SHALLOW_CLONE,
+    shallowDepth: CONFIG_DEFAULTS.SHALLOW_DEPTH,
     repos: {},
   };
 }
@@ -63,10 +86,11 @@ export function getDefaultConfig(): GlobalConfig {
  */
 export async function ensureConfigDir(): Promise<void> {
   try {
-    const grfRoot = getGrfRoot();
-    const reposRoot = getReposRoot();
+    // 使用新的目录确保函数
+    await ensureGrfDirs();
 
-    await fs.ensureDir(grfRoot);
+    // 同时确保 repos 目录存在
+    const reposRoot = getReposRoot();
     await fs.ensureDir(reposRoot);
   } catch (error) {
     throw new GrfError(
@@ -77,39 +101,42 @@ export async function ensureConfigDir(): Promise<void> {
   }
 }
 
+// ============================================================================
+// 全局配置读写函数（使用新模块化架构）
+// ============================================================================
+
 /**
  * 读取全局配置
  * 如果配置文件不存在，返回默认配置
+ *
+ * 内部实现：
+ * 1. 调用 ensureMigrated() 确保旧配置已迁移
+ * 2. 使用 getAllConfigs() 获取配置参数
+ * 3. 使用 reposIndex.getAll() 获取仓库列表
+ * 4. 组装成 GlobalConfig 对象返回
+ *
  * @returns 全局配置对象
  */
 export async function readGlobalConfig(): Promise<GlobalConfig> {
-  const configPath = getConfigPath();
-
   try {
-    const exists = await fs.pathExists(configPath);
-    if (!exists) {
-      return getDefaultConfig();
-    }
+    // 确保配置已迁移（静默执行，不影响用户体验）
+    await ensureMigrated();
 
-    const content = await fs.readFile(configPath, "utf-8");
-    const config = JSON.parse(content) as GlobalConfig;
+    // 使用新模块获取配置
+    const configs = await getAllConfigs();
+    const repos = await reposIndex.getAll();
 
-    // 确保配置对象包含所有必要字段
+    // 组装成 GlobalConfig 对象
     return {
-      ...getDefaultConfig(),
-      ...config,
+      version: configs.version,
+      defaultBranch: configs.defaultBranch,
+      shallowClone: configs.shallowClone,
+      shallowDepth: configs.shallowDepth,
+      repos,
     };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return getDefaultConfig();
-    }
-
-    if (error instanceof SyntaxError) {
-      throw new GrfError(
-        ErrorCode.CONFIG_PARSE_ERROR,
-        `配置文件解析失败: ${error.message}`,
-        error,
-      );
+    if (error instanceof GrfError) {
+      throw error;
     }
 
     throw new GrfError(
@@ -123,16 +150,28 @@ export async function readGlobalConfig(): Promise<GlobalConfig> {
 /**
  * 写入全局配置
  * 自动创建配置目录（如果不存在）
+ *
+ * 内部实现：
+ * 1. 使用 setAllConfigs() 保存配置参数
+ * 2. 使用 reposIndex.setAll() 保存仓库列表
+ *
  * @param config 要写入的配置对象
  */
 export async function writeGlobalConfig(config: GlobalConfig): Promise<void> {
   try {
+    // 确保目录存在
     await ensureConfigDir();
 
-    const configPath = getConfigPath();
-    const content = JSON.stringify(config, null, 2);
+    // 使用新模块保存配置参数
+    await setAllConfigs({
+      version: config.version,
+      defaultBranch: config.defaultBranch,
+      shallowClone: config.shallowClone,
+      shallowDepth: config.shallowDepth,
+    });
 
-    await fs.writeFile(configPath, content, "utf-8");
+    // 使用新模块保存仓库列表
+    await reposIndex.setAll(config.repos);
   } catch (error) {
     if (error instanceof GrfError) {
       throw error;
@@ -145,6 +184,10 @@ export async function writeGlobalConfig(config: GlobalConfig): Promise<void> {
     );
   }
 }
+
+// ============================================================================
+// 仓库元信息相关函数（保持原有实现）
+// ============================================================================
 
 /**
  * 获取仓库元信息文件路径

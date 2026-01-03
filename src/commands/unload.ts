@@ -1,62 +1,31 @@
 /**
  * unload 命令
- * 移除当前项目中已加载的参考代码（use 命令的逆操作）
+ * 从当前项目中移除已加载的参考代码（use 命令的逆操作）
  */
 
 import { Command } from "commander";
 import chalk from "chalk";
-import ora from "ora";
 import path from "path";
-import * as readline from "readline";
 import { select } from "@inquirer/prompts";
 import * as filesystem from "../core/filesystem.js";
 import * as loading from "../core/loading.js";
-import { GrfError, ErrorCode, LoadingEntry } from "../types/index.js";
-
-/** .gitreference 目录名 */
-const GITREFERENCE_DIR = ".gitreference";
-
-/**
- * 从 loading.json 获取所有已加载仓库的目标路径
- * @param projectRoot 项目根目录
- * @returns 由 gitreference 管理的路径列表
- */
-async function getGitreferenceManagedPaths(
-  projectRoot: string,
-): Promise<string[]> {
-  const entries = await loading.getEntries(projectRoot);
-  return entries.map((entry) => entry.targetPath);
-}
+import { LoadingEntry } from "../types/index.js";
+import { startSpinner } from "../ui/spinner.js";
+import { confirm } from "../ui/prompt.js";
+import { padEnd } from "../ui/table.js";
+import { handleError } from "../utils/error.js";
+import { DIR_NAMES } from "../utils/constants.js";
 
 /**
- * 填充字符串到指定宽度
- * @param str 原始字符串
- * @param width 目标宽度
- * @returns 填充后的字符串
+ * 注册 unload 命令
+ * @param program Commander 程序实例
  */
-function padEnd(str: string, width: number): string {
-  if (str.length >= width) return str;
-  return str + " ".repeat(width - str.length);
+export function registerUnloadCommand(program: Command): void {
+  program.addCommand(unloadCommand);
 }
 
-/**
- * 确认提示
- * @param message 提示消息
- * @returns 用户是否确认
- */
-async function confirm(message: string): Promise<boolean> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(`${message} (y/N) `, (answer) => {
-      rl.close();
-      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
-    });
-  });
-}
+/** .gitreference 目录名（使用共享常量） */
+const GITREFERENCE_DIR = DIR_NAMES.GITREFERENCE;
 
 /**
  * 空目录信息
@@ -70,18 +39,17 @@ interface EmptyDir {
 
 /**
  * 从 loading.json 获取所有已加载的仓库条目
- * @param projectRoot 项目根目录
  * @returns 加载条目列表
  */
-async function getLoadedEntries(projectRoot: string): Promise<LoadingEntry[]> {
-  return await loading.getEntries(projectRoot);
+async function getLoadedEntries(): Promise<LoadingEntry[]> {
+  return await loading.getEntries();
 }
 
 /**
- * 递归扫描 .gitreference 目录，获取空目录列表
+ * 递归扫描 .gitreference 目录以获取空目录列表
  * @param baseDir .gitreference 目录的绝对路径
- * @param currentPath 当前扫描的相对路径
- * @param loadedPaths 已加载的路径列表（用于排除）
+ * @param currentPath 当前正在扫描的相对路径
+ * @param loadedPaths 已加载路径列表（用于排除）
  * @returns 空目录列表
  */
 async function scanEmptyDirs(
@@ -150,7 +118,7 @@ function matchEntries(entries: LoadingEntry[], name: string): LoadingEntry[] {
     const repoName = entry.repoName.replace(/\\/g, "/");
     const targetPath = entry.targetPath.replace(/\\/g, "/");
 
-    // 完整仓库名匹配: github.com/facebook/react
+    // 完整仓库名称匹配: github.com/facebook/react
     if (repoName === normalizedName) {
       return true;
     }
@@ -160,7 +128,7 @@ function matchEntries(entries: LoadingEntry[], name: string): LoadingEntry[] {
       return true;
     }
 
-    // 仓库短名匹配: react -> 匹配所有名为 react 的仓库
+    // 短仓库名称匹配: react -> 匹配所有名为 react 的仓库
     const shortName = path.basename(repoName);
     if (shortName === normalizedName) {
       return true;
@@ -183,7 +151,7 @@ function matchEntries(entries: LoadingEntry[], name: string): LoadingEntry[] {
 /**
  * 递归删除空的父目录
  * @param dirPath 起始目录路径
- * @param stopAt 停止删除的目录（不会删除此目录）
+ * @param stopAt 停止的目录（不会删除此目录）
  * @param verbose 是否输出详细信息
  */
 async function removeEmptyParents(
@@ -199,7 +167,9 @@ async function removeEmptyParents(
       if (entries.length === 0) {
         if (verbose) {
           console.log(
-            chalk.gray(`  清理空目录: ${path.relative(stopAt, currentDir)}`),
+            chalk.gray(
+              `  Cleaning empty directory: ${path.relative(stopAt, currentDir)}`,
+            ),
           );
         }
         await filesystem.removeDir(currentDir);
@@ -242,7 +212,9 @@ async function cleanEmptyDirectories(
         if (entries.length === 0) {
           if (verbose) {
             console.log(
-              chalk.gray(`  删除空目录: ${dir.fullPath.replace(/\\/g, "/")}`),
+              chalk.gray(
+                `  Removing empty directory: ${dir.fullPath.replace(/\\/g, "/")}`,
+              ),
             );
           }
           await filesystem.removeDir(dir.absolutePath);
@@ -261,7 +233,7 @@ async function cleanEmptyDirectories(
 }
 
 /**
- * 交互式选择仓库条目
+ * 交互式仓库条目选择
  * @param matches 匹配的条目列表
  * @param name 用户输入的名称
  * @returns 用户选择的条目，如果取消则返回 null
@@ -271,20 +243,20 @@ async function selectEntry(
   name: string,
 ): Promise<LoadingEntry | null> {
   console.log(
-    chalk.yellow(`找到 ${matches.length} 个匹配 '${name}' 的参考代码:`),
+    chalk.yellow(`Found ${matches.length} reference code matching '${name}':`),
   );
   console.log();
 
   try {
     const selected = await select({
-      message: "请选择要删除的参考代码:",
+      message: "Select reference code to remove:",
       choices: [
         ...matches.map((match) => ({
           name: `${match.repoName} -> ${match.targetPath}`,
           value: match,
         })),
         {
-          name: chalk.gray("取消"),
+          name: chalk.gray("Cancel"),
           value: null as LoadingEntry | null,
         },
       ],
@@ -298,9 +270,9 @@ async function selectEntry(
 }
 
 /**
- * 详细模式下删除目录
+ * 在详细模式下删除目录
  * @param dirPath 要删除的目录路径
- * @param displayPath 显示用的路径
+ * @param displayPath 用于显示的路径
  * @param verbose 是否输出详细信息
  */
 async function removeDirVerbose(
@@ -309,14 +281,14 @@ async function removeDirVerbose(
   verbose: boolean,
 ): Promise<void> {
   if (verbose) {
-    console.log(chalk.gray(`  删除目录: ${displayPath}`));
+    console.log(chalk.gray(`  Removing directory: ${displayPath}`));
   }
   await filesystem.removeDir(dirPath);
 }
 
 /**
- * 清理 .gitignore 中的参考代码路径条目
- * @param targetPath 被删除的目标路径（相对于工作目录）
+ * 从 .gitignore 中清理参考代码路径条目
+ * @param targetPath 已删除的目标路径（相对于工作目录）
  * @param gitreferenceDirExists .gitreference 目录是否仍然存在
  * @param verbose 是否输出详细信息
  */
@@ -332,14 +304,14 @@ async function cleanupGitignore(
     targetPath.startsWith(".gitreference") ||
     targetPath.startsWith(GITREFERENCE_DIR)
   ) {
-    // 只有当 .gitreference 目录不存在或为空时，才移除 .gitignore 中的 .gitreference/ 条目
+    // 只有当目录不存在或为空时才从 .gitignore 中移除 .gitreference/ 条目
     if (!gitreferenceDirExists) {
       const removed = await filesystem.removeFromGitignore(
         cwd,
         ".gitreference/",
       );
       if (removed && verbose) {
-        console.log(chalk.gray("  已从 .gitignore 中移除 .gitreference/"));
+        console.log(chalk.gray("  Removed .gitreference/ from .gitignore"));
       }
     }
   } else {
@@ -349,7 +321,7 @@ async function cleanupGitignore(
       : targetPath + "/";
     const removed = await filesystem.removeFromGitignore(cwd, gitignoreEntry);
     if (removed && verbose) {
-      console.log(chalk.gray(`  已从 .gitignore 中移除 ${gitignoreEntry}`));
+      console.log(chalk.gray(`  Removed ${gitignoreEntry} from .gitignore`));
     }
   }
 }
@@ -384,7 +356,7 @@ export const unloadCommand = new Command("unload")
         const gitrefDir = path.join(cwd, GITREFERENCE_DIR);
 
         // 获取所有已加载的条目
-        const loadedEntries = await getLoadedEntries(cwd);
+        const loadedEntries = await getLoadedEntries();
 
         // 检查 .gitreference 目录是否存在（用于空目录扫描）
         const gitrefDirExists = await filesystem.exists(gitrefDir);
@@ -398,11 +370,13 @@ export const unloadCommand = new Command("unload")
         // 情况 0: --clean-empty 选项，清理空目录
         if (options.cleanEmpty) {
           if (emptyDirs.length === 0) {
-            console.log(chalk.green("没有需要清理的空目录。"));
+            console.log(chalk.green("No empty directories to clean."));
             return;
           }
 
-          console.log(`发现 ${chalk.bold(emptyDirs.length)} 个空目录:`);
+          console.log(
+            `Found ${chalk.bold(emptyDirs.length)} empty directories:`,
+          );
           for (const dir of emptyDirs) {
             console.log(`  - ${dir.fullPath.replace(/\\/g, "/")}`);
           }
@@ -410,21 +384,23 @@ export const unloadCommand = new Command("unload")
 
           // dry-run 模式
           if (options.dryRun) {
-            console.log(chalk.yellow("(试运行模式，未执行实际删除)"));
+            console.log(chalk.yellow("(Dry run mode, no actual deletion)"));
             return;
           }
 
           // 确认删除
           if (!options.force) {
-            const confirmed = await confirm("确定要清理这些空目录吗?");
+            const confirmed = await confirm(
+              "Are you sure you want to clean these empty directories?",
+            );
             if (!confirmed) {
-              console.log(chalk.yellow("操作已取消。"));
+              console.log(chalk.yellow("Operation cancelled."));
               return;
             }
           }
 
           // 执行清理
-          const spinner = ora("正在清理空目录...").start();
+          const spinner = startSpinner("Cleaning empty directories...");
 
           try {
             const cleanedCount = await cleanEmptyDirectories(
@@ -439,7 +415,9 @@ export const unloadCommand = new Command("unload")
                 const remaining = await filesystem.readDir(gitrefDir);
                 if (remaining.length === 0) {
                   if (options.verbose) {
-                    console.log(chalk.gray(`  删除空的 .gitreference 目录`));
+                    console.log(
+                      chalk.gray(`  Removing empty .gitreference directory`),
+                    );
                   }
                   await filesystem.removeDir(gitrefDir);
                 }
@@ -449,13 +427,15 @@ export const unloadCommand = new Command("unload")
             }
 
             const elapsed = Date.now() - startTime;
-            spinner.succeed(chalk.green(`已清理 ${cleanedCount} 个空目录!`));
+            spinner.succeed(
+              chalk.green(`Cleaned ${cleanedCount} empty directories!`),
+            );
 
             if (options.verbose) {
-              console.log(chalk.gray(`  耗时: ${elapsed}ms`));
+              console.log(chalk.gray(`  Time elapsed: ${elapsed}ms`));
             }
           } catch (error) {
-            spinner.fail(chalk.red("清理失败"));
+            spinner.fail(chalk.red("Cleanup failed"));
             throw error;
           }
           return;
@@ -464,14 +444,16 @@ export const unloadCommand = new Command("unload")
         // 情况 1: --list 选项，列出所有已加载的参考代码
         if (options.list) {
           if (loadedEntries.length === 0 && emptyDirs.length === 0) {
-            console.log(chalk.yellow("当前项目中没有已加载的参考代码。"));
+            console.log(
+              chalk.yellow("No loaded reference code in current project."),
+            );
             return;
           }
 
           if (loadedEntries.length > 0) {
             console.log(
               chalk.bold(
-                `📦 当前项目中已加载的参考代码 (${loadedEntries.length} 个)`,
+                `📦 Loaded reference code in current project (${loadedEntries.length})`,
               ),
             );
             console.log();
@@ -506,37 +488,41 @@ export const unloadCommand = new Command("unload")
 
             console.log();
 
-            // 详细模式下显示更多信息
+            // 在详细模式下显示更多信息
             if (options.verbose) {
-              console.log(chalk.gray("详细信息:"));
+              console.log(chalk.gray("Details:"));
               for (const entry of loadedEntries) {
                 console.log(chalk.gray(`  - ${entry.repoName}`));
                 console.log(chalk.gray(`    ID: ${entry.id}`));
                 console.log(chalk.gray(`    URL: ${entry.repoUrl}`));
-                console.log(chalk.gray(`    路径: ${entry.targetPath}`));
+                console.log(chalk.gray(`    Path: ${entry.targetPath}`));
                 console.log(chalk.gray(`    Commit: ${entry.commitId}`));
                 if (entry.branch) {
-                  console.log(chalk.gray(`    分支: ${entry.branch}`));
+                  console.log(chalk.gray(`    Branch: ${entry.branch}`));
                 }
                 if (entry.subdir) {
-                  console.log(chalk.gray(`    子目录: ${entry.subdir}`));
+                  console.log(chalk.gray(`    Subdir: ${entry.subdir}`));
                 }
-                console.log(chalk.gray(`    加载时间: ${entry.loadedAt}`));
+                console.log(chalk.gray(`    Loaded at: ${entry.loadedAt}`));
                 if (entry.updatedAt) {
-                  console.log(chalk.gray(`    更新时间: ${entry.updatedAt}`));
+                  console.log(chalk.gray(`    Updated at: ${entry.updatedAt}`));
                 }
               }
               console.log();
             }
           } else {
-            console.log(chalk.yellow("当前项目中没有已加载的参考代码。"));
+            console.log(
+              chalk.yellow("No loaded reference code in current project."),
+            );
             console.log();
           }
 
           // 显示空目录提示
           if (emptyDirs.length > 0) {
             console.log(
-              chalk.yellow(`⚠️  发现 ${emptyDirs.length} 个空目录结构`),
+              chalk.yellow(
+                `⚠️  Found ${emptyDirs.length} empty directory structures`,
+              ),
             );
             if (options.verbose) {
               for (const dir of emptyDirs) {
@@ -546,14 +532,18 @@ export const unloadCommand = new Command("unload")
               }
             }
             console.log(
-              chalk.gray(`   使用 'grf unload --clean-empty' 清理空目录`),
+              chalk.gray(
+                `   Use 'grf unload --clean-empty' to clean empty directories`,
+              ),
             );
             console.log();
           }
 
           if (loadedEntries.length > 0) {
             console.log(
-              chalk.gray(`💡 使用 'grf unload <name>' 移除指定的参考代码`),
+              chalk.gray(
+                `💡 Use 'grf unload <name>' to remove specific reference code`,
+              ),
             );
           }
           return;
@@ -563,17 +553,17 @@ export const unloadCommand = new Command("unload")
         if (options.all) {
           // 如果没有已加载的条目
           if (loadedEntries.length === 0) {
-            console.log(chalk.yellow("没有找到需要删除的参考代码。"));
+            console.log(chalk.yellow("No reference code found to delete."));
             console.log();
             console.log(
               chalk.gray(
-                "💡 提示: loading.json 中没有记录任何已加载的参考代码。",
+                "💡 Hint: No loaded reference code recorded in loading.json.",
               ),
             );
             return;
           }
 
-          // 收集所有需要删除的路径
+          // 收集所有要删除的路径
           interface PathToDelete {
             entry: LoadingEntry;
             absolutePath: string;
@@ -593,10 +583,12 @@ export const unloadCommand = new Command("unload")
 
           // 显示将要删除的内容
           console.log(
-            `将要删除 ${chalk.bold(loadedEntries.length)} 个参考代码:`,
+            `Will delete ${chalk.bold(loadedEntries.length)} reference code:`,
           );
           for (const pathInfo of pathsToDelete) {
-            const status = pathInfo.exists ? "" : chalk.gray(" (路径不存在)");
+            const status = pathInfo.exists
+              ? ""
+              : chalk.gray(" (path does not exist)");
             console.log(
               `  - ${pathInfo.entry.repoName} -> ${pathInfo.entry.targetPath}${status}`,
             );
@@ -605,21 +597,21 @@ export const unloadCommand = new Command("unload")
 
           // dry-run 模式
           if (options.dryRun) {
-            console.log(chalk.yellow("(试运行模式，未执行实际删除)"));
+            console.log(chalk.yellow("(Dry run mode, no actual deletion)"));
             return;
           }
 
           // 确认删除
           if (!options.force) {
-            const confirmed = await confirm("确定要删除吗?");
+            const confirmed = await confirm("Are you sure you want to delete?");
             if (!confirmed) {
-              console.log(chalk.yellow("操作已取消。"));
+              console.log(chalk.yellow("Operation cancelled."));
               return;
             }
           }
 
           // 执行删除
-          const spinner = ora("正在删除参考代码...").start();
+          const spinner = startSpinner("Removing reference code...");
 
           try {
             let deletedCount = 0;
@@ -627,16 +619,50 @@ export const unloadCommand = new Command("unload")
             for (const pathInfo of pathsToDelete) {
               if (options.verbose) {
                 spinner.stop();
-                console.log(chalk.gray(`  删除: ${pathInfo.entry.targetPath}`));
+                console.log(
+                  chalk.gray(`  Removing: ${pathInfo.entry.targetPath}`),
+                );
                 spinner.start();
               }
 
               // 删除实际文件/目录（如果存在）
               if (pathInfo.exists) {
                 await filesystem.removeDir(pathInfo.absolutePath);
+
+                // 递归删除空的父目录
+                if (
+                  pathInfo.entry.targetPath.startsWith(".gitreference/") ||
+                  pathInfo.entry.targetPath.startsWith(GITREFERENCE_DIR + "/")
+                ) {
+                  // 在 .gitreference 下，清理到 gitrefDir 为止
+                  if (options.verbose) {
+                    spinner.stop();
+                  }
+                  await removeEmptyParents(
+                    pathInfo.absolutePath,
+                    gitrefDir,
+                    options.verbose,
+                  );
+                  if (options.verbose) {
+                    spinner.start();
+                  }
+                } else {
+                  // 自定义路径，清理到工作目录为止
+                  if (options.verbose) {
+                    spinner.stop();
+                  }
+                  await removeEmptyParents(
+                    pathInfo.absolutePath,
+                    cwd,
+                    options.verbose,
+                  );
+                  if (options.verbose) {
+                    spinner.start();
+                  }
+                }
               }
 
-              // 清理 .gitignore 中对应的条目
+              // 从 .gitignore 中清理对应条目
               const gitignoreEntry = pathInfo.entry.targetPath.endsWith("/")
                 ? pathInfo.entry.targetPath
                 : pathInfo.entry.targetPath + "/";
@@ -646,24 +672,26 @@ export const unloadCommand = new Command("unload")
             }
 
             // 清空 loading.json
-            await loading.clearAllEntries(cwd);
+            await loading.clearAllEntries();
 
             // 检查 .gitreference 目录是否为空
             if (!options.keepEmpty && gitrefDirExists) {
               try {
                 const remaining = await filesystem.readDir(gitrefDir);
-                // 只剩下 loading.json 或为空时删除整个目录
+                // 当只剩 loading.json 或为空时删除整个目录
                 if (
                   remaining.length === 0 ||
                   (remaining.length === 1 && remaining[0] === "loading.json")
                 ) {
                   if (options.verbose) {
                     spinner.stop();
-                    console.log(chalk.gray(`  删除 .gitreference 目录`));
+                    console.log(
+                      chalk.gray(`  Removing .gitreference directory`),
+                    );
                     spinner.start();
                   }
                   await filesystem.removeDir(gitrefDir);
-                  // 移除 .gitignore 中的 .gitreference/ 条目
+                  // 从 .gitignore 中移除 .gitreference/ 条目
                   await filesystem.removeFromGitignore(cwd, ".gitreference/");
                 }
               } catch {
@@ -672,30 +700,34 @@ export const unloadCommand = new Command("unload")
             }
 
             const elapsed = Date.now() - startTime;
-            spinner.succeed(chalk.green(`已删除 ${deletedCount} 个参考代码!`));
+            spinner.succeed(
+              chalk.green(`Deleted ${deletedCount} reference code!`),
+            );
 
             if (options.verbose) {
-              console.log(chalk.gray(`  耗时: ${elapsed}ms`));
+              console.log(chalk.gray(`  Time elapsed: ${elapsed}ms`));
             }
           } catch (error) {
-            spinner.fail(chalk.red("删除失败"));
+            spinner.fail(chalk.red("Deletion failed"));
             throw error;
           }
           return;
         }
 
-        // 情况 3: 指定仓库名称，删除指定的参考代码
+        // 情况 3: 指定了仓库名称，删除特定参考代码
         if (name) {
           // 匹配条目
           const matches = matchEntries(loadedEntries, name);
 
           if (matches.length === 0) {
             console.error(
-              chalk.red(`${chalk.bold("✗")} 未找到匹配的参考代码: ${name}`),
+              chalk.red(
+                `${chalk.bold("✗")} No matching reference code found: ${name}`,
+              ),
             );
             console.log();
             console.log(
-              `使用 '${chalk.cyan("grf unload --list")}' 查看所有已加载的参考代码。`,
+              `Use '${chalk.cyan("grf unload --list")}' to see all loaded reference code.`,
             );
             process.exit(1);
           }
@@ -703,24 +735,28 @@ export const unloadCommand = new Command("unload")
           let targetEntry: LoadingEntry;
 
           if (matches.length > 1) {
-            // 如果使用了 --force 选项，仍然报错要求精确指定
+            // 如果使用了 --force 选项，仍然需要精确指定
             if (options.force) {
               console.error(
-                chalk.red(`${chalk.bold("✗")} 找到多个匹配的参考代码:`),
+                chalk.red(
+                  `${chalk.bold("✗")} Found multiple matching reference code:`,
+                ),
               );
               console.log();
               for (const match of matches) {
                 console.log(`  - ${match.repoName} -> ${match.targetPath}`);
               }
               console.log();
-              console.log(`请使用完整路径精确指定要删除的参考代码。`);
+              console.log(
+                `Please use full path to specify exactly which reference code to delete.`,
+              );
               process.exit(1);
             }
 
             // 交互式选择
             const selected = await selectEntry(matches, name);
             if (!selected) {
-              console.log(chalk.yellow("操作已取消。"));
+              console.log(chalk.yellow("Operation cancelled."));
               return;
             }
             targetEntry = selected;
@@ -735,58 +771,61 @@ export const unloadCommand = new Command("unload")
           const pathExists = await filesystem.exists(absolutePath);
 
           // 显示将要删除的内容
-          console.log(`将要删除: ${chalk.cyan(displayName)}`);
-          console.log(`  目标路径: ${chalk.gray(displayPath)}`);
+          console.log(`Will delete: ${chalk.cyan(displayName)}`);
+          console.log(`  Target path: ${chalk.gray(displayPath)}`);
           if (!pathExists) {
             console.log(
               chalk.yellow(
-                `  (注意: 目标路径不存在，将仅从 loading.json 中移除记录)`,
+                `  (Note: Target path does not exist, will only remove record from loading.json)`,
               ),
             );
           }
           if (options.verbose) {
-            console.log(`  绝对路径: ${chalk.gray(absolutePath)}`);
+            console.log(`  Absolute path: ${chalk.gray(absolutePath)}`);
             console.log(`  Commit: ${chalk.gray(targetEntry.commitId)}`);
             if (targetEntry.branch) {
-              console.log(`  分支: ${chalk.gray(targetEntry.branch)}`);
+              console.log(`  Branch: ${chalk.gray(targetEntry.branch)}`);
             }
           }
           console.log();
 
           // dry-run 模式
           if (options.dryRun) {
-            console.log(chalk.yellow("(试运行模式，未执行实际删除)"));
+            console.log(chalk.yellow("(Dry run mode, no actual deletion)"));
             return;
           }
 
           // 确认删除
           if (!options.force) {
-            const confirmed = await confirm(`确定要删除 '${displayName}' 吗?`);
+            const confirmed = await confirm(
+              `Are you sure you want to delete '${displayName}'?`,
+            );
             if (!confirmed) {
-              console.log(chalk.yellow("操作已取消。"));
+              console.log(chalk.yellow("Operation cancelled."));
               return;
             }
           }
 
           // 执行删除
-          const spinner = ora("正在删除参考代码...").start();
+          const spinner = startSpinner("Removing reference code...");
 
           try {
             // 删除实际文件/目录（如果存在）
             if (pathExists) {
               if (options.verbose) {
                 spinner.stop();
-                console.log(chalk.gray(`  删除目录: ${displayPath}`));
+                console.log(chalk.gray(`  Removing directory: ${displayPath}`));
                 spinner.start();
               }
 
               await filesystem.removeDir(absolutePath);
 
-              // 递归删除空的父目录（仅当在 .gitreference 目录下时）
+              // 递归删除空的父目录
               if (
                 targetEntry.targetPath.startsWith(".gitreference/") ||
                 targetEntry.targetPath.startsWith(GITREFERENCE_DIR + "/")
               ) {
+                // 在 .gitreference 下，清理到 gitrefDir 为止
                 if (options.verbose) {
                   spinner.stop();
                 }
@@ -798,13 +837,22 @@ export const unloadCommand = new Command("unload")
                 if (options.verbose) {
                   spinner.start();
                 }
+              } else {
+                // 自定义路径，清理到工作目录为止
+                if (options.verbose) {
+                  spinner.stop();
+                }
+                await removeEmptyParents(absolutePath, cwd, options.verbose);
+                if (options.verbose) {
+                  spinner.start();
+                }
               }
             }
 
-            // 从 loading.json 移除条目
-            await loading.removeEntry(targetEntry.id, cwd);
+            // 从 loading.json 中移除条目
+            await loading.removeEntry(targetEntry.id);
 
-            // 清理 .gitignore 中对应的条目
+            // 从 .gitignore 中清理对应条目
             const gitignoreEntry = targetEntry.targetPath.endsWith("/")
               ? targetEntry.targetPath
               : targetEntry.targetPath + "/";
@@ -815,7 +863,7 @@ export const unloadCommand = new Command("unload")
             if (gitignoreRemoved && options.verbose) {
               spinner.stop();
               console.log(
-                chalk.gray(`  已从 .gitignore 中移除 ${gitignoreEntry}`),
+                chalk.gray(`  Removed ${gitignoreEntry} from .gitignore`),
               );
               spinner.start();
             }
@@ -824,21 +872,23 @@ export const unloadCommand = new Command("unload")
             if (!options.keepEmpty && gitrefDirExists) {
               try {
                 const remaining = await filesystem.readDir(gitrefDir);
-                // 只剩下 loading.json 或为空时删除整个目录
+                // 当只剩 loading.json 或为空时删除整个目录
                 if (
                   remaining.length === 0 ||
                   (remaining.length === 1 && remaining[0] === "loading.json")
                 ) {
                   // 检查 loading.json 是否还有其他条目
-                  const remainingEntries = await loading.getEntries(cwd);
+                  const remainingEntries = await loading.getEntries();
                   if (remainingEntries.length === 0) {
                     if (options.verbose) {
                       spinner.stop();
-                      console.log(chalk.gray(`  删除空的 .gitreference 目录`));
+                      console.log(
+                        chalk.gray(`  Removing empty .gitreference directory`),
+                      );
                       spinner.start();
                     }
                     await filesystem.removeDir(gitrefDir);
-                    // 移除 .gitignore 中的 .gitreference/ 条目
+                    // 从 .gitignore 中移除 .gitreference/ 条目
                     await filesystem.removeFromGitignore(cwd, ".gitreference/");
                   }
                 }
@@ -848,54 +898,43 @@ export const unloadCommand = new Command("unload")
             }
 
             const elapsed = Date.now() - startTime;
-            spinner.succeed(chalk.green("参考代码已移除!"));
+            spinner.succeed(chalk.green("Reference code removed!"));
             console.log();
-            console.log(`  ${chalk.gray("仓库:")}   ${displayName}`);
-            console.log(`  ${chalk.gray("路径:")}   ${displayPath}`);
+            console.log(`  ${chalk.gray("Repository:")}   ${displayName}`);
+            console.log(`  ${chalk.gray("Path:")}   ${displayPath}`);
 
             if (options.verbose) {
-              console.log(chalk.gray(`  耗时: ${elapsed}ms`));
+              console.log(chalk.gray(`  Time elapsed: ${elapsed}ms`));
             }
           } catch (error) {
-            spinner.fail(chalk.red("删除失败"));
+            spinner.fail(chalk.red("Deletion failed"));
             throw error;
           }
           return;
         }
 
-        // 情况 4: 没有指定名称也没有 --all 或 --list，显示使用说明
-        console.log(chalk.yellow("未指定要移除的参考代码。"));
+        // 情况 4: 未指定名称、--all 或 --list，显示用法
+        console.log(chalk.yellow("No reference code specified to remove."));
         console.log();
-        console.log("用法:");
+        console.log("Usage:");
         console.log(
-          `  ${chalk.cyan("grf unload <name>")}        移除指定的参考代码`,
+          `  ${chalk.cyan("grf unload <name>")}        Remove specific reference code`,
         );
         console.log(
-          `  ${chalk.cyan("grf unload --all")}         移除所有参考代码`,
+          `  ${chalk.cyan("grf unload --all")}         Remove all reference code`,
         );
         console.log(
-          `  ${chalk.cyan("grf unload --list")}        列出所有已加载的参考代码`,
+          `  ${chalk.cyan("grf unload --list")}        List all loaded reference code`,
         );
         console.log(
-          `  ${chalk.cyan("grf unload --clean-empty")} 清理空目录结构`,
+          `  ${chalk.cyan("grf unload --clean-empty")} Clean empty directory structures`,
         );
         console.log();
         console.log(
-          `使用 '${chalk.cyan("grf unload --list")}' 查看所有已加载的参考代码。`,
+          `Use '${chalk.cyan("grf unload --list")}' to see all loaded reference code.`,
         );
       } catch (error) {
-        if (error instanceof GrfError) {
-          console.error(chalk.red(`${chalk.bold("✗")} ${error.message}`));
-
-          if (error.code === ErrorCode.FS_PERMISSION_DENIED) {
-            console.error(chalk.gray(`  权限被拒绝，请检查文件权限。`));
-          }
-        } else if (error instanceof Error) {
-          console.error(chalk.red(`${chalk.bold("✗")} ${error.message}`));
-        } else {
-          console.error(chalk.red(`${chalk.bold("✗")} 发生未知错误`));
-        }
-        process.exit(1);
+        handleError(error, { exit: true });
       }
     },
   );

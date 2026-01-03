@@ -6,52 +6,24 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import * as repository from "../core/repository.js";
+import { padEnd, truncate } from "../ui/table.js";
+import { shortCommit, formatDate } from "../ui/format.js";
+import { handleError } from "../utils/error.js";
+import { TABLE_COLUMNS } from "../utils/constants.js";
 
 /**
- * 截断长字符串
- * @param str 原始字符串
- * @param maxLength 最大长度
- * @returns 截断后的字符串
+ * 注册 list 命令
+ * @param program Commander 程序实例
  */
-function truncate(str: string, maxLength: number): string {
-  if (str.length <= maxLength) return str;
-  return str.slice(0, maxLength - 3) + "...";
+export function registerListCommand(program: Command): void {
+  program.addCommand(listCommand);
 }
 
-/**
- * 格式化日期
- * @param isoDate ISO 格式日期字符串
- * @returns 格式化后的日期字符串
- */
-function formatDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleDateString();
-}
-
-/**
- * 截断 commit ID
- * @param commitId 完整的 commit ID
- * @returns 截断后的 commit ID（7 字符）
- */
-function shortCommit(commitId: string): string {
-  return commitId.slice(0, 7);
-}
-
-/**
- * 填充字符串到指定宽度
- * @param str 原始字符串
- * @param width 目标宽度
- * @returns 填充后的字符串
- */
-function padEnd(str: string, width: number): string {
-  if (str.length >= width) return str;
-  return str + " ".repeat(width - str.length);
-}
-
-// 列宽定义
-const COL_NAME = 40;
-const COL_BRANCH = 15;
-const COL_COMMIT = 10;
-const COL_ADDED = 12;
+// 列宽定义（使用共享常量）
+const COL_NAME = TABLE_COLUMNS.NAME;
+const COL_BRANCH = TABLE_COLUMNS.BRANCH;
+const COL_COMMIT = TABLE_COLUMNS.COMMIT;
+const COL_ADDED = TABLE_COLUMNS.DATE;
 
 export const listCommand = new Command("list")
   .description("List all cached repositories")
@@ -116,13 +88,6 @@ export const listCommand = new Command("list")
         ),
       );
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(chalk.red(`${chalk.bold("✗")} ${error.message}`));
-      } else {
-        console.error(
-          chalk.red(`${chalk.bold("✗")} An unknown error occurred`),
-        );
-      }
-      process.exit(1);
+      handleError(error, { exit: true });
     }
   });

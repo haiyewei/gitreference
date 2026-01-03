@@ -3,13 +3,7 @@
 import { Command } from "commander";
 import * as fs from "fs";
 import * as path from "path";
-import { addCommand } from "./commands/add.js";
-import { loadCommand } from "./commands/load.js";
-import { unloadCommand } from "./commands/unload.js";
-import { updateCommand } from "./commands/update.js";
-import { listCommand } from "./commands/list.js";
-import { cleanCommand } from "./commands/clean.js";
-import { configCommand } from "./commands/config.js";
+import { registerAllCommands } from "./commands/index.js";
 
 // 读取 package.json 获取版本号
 const packageJsonPath = path.join(__dirname, "..", "package.json");
@@ -23,13 +17,7 @@ program
   .version(packageJson.version);
 
 // 注册所有命令
-program.addCommand(addCommand);
-program.addCommand(loadCommand);
-program.addCommand(unloadCommand);
-program.addCommand(updateCommand);
-program.addCommand(listCommand);
-program.addCommand(cleanCommand);
-program.addCommand(configCommand);
+registerAllCommands(program);
 
 // 全局错误处理
 process.on("uncaughtException", (error: Error) => {

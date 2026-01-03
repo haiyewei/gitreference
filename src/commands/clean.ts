@@ -5,28 +5,17 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import ora from "ora";
-import * as readline from "readline";
 import * as repository from "../core/repository.js";
-import { GrfError } from "../types/index.js";
+import { confirm, showCancelled } from "../ui/prompt.js";
+import { startSpinner } from "../ui/spinner.js";
+import { handleError } from "../utils/error.js";
 
 /**
- * 确认提示
- * @param message 提示消息
- * @returns 用户是否确认
+ * 注册 clean 命令
+ * @param program Commander 程序实例
  */
-async function confirm(message: string): Promise<boolean> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(`${message} (y/N) `, (answer) => {
-      rl.close();
-      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
-    });
-  });
+export function registerCleanCommand(program: Command): void {
+  program.addCommand(cleanCommand);
 }
 
 export const cleanCommand = new Command("clean")
@@ -67,13 +56,13 @@ export const cleanCommand = new Command("clean")
 
             const confirmed = await confirm("Are you sure?");
             if (!confirmed) {
-              console.log(chalk.yellow("Operation cancelled."));
+              showCancelled();
               return;
             }
           }
 
           // 删除所有仓库
-          const spinner = ora("Removing repositories...").start();
+          const spinner = startSpinner("Removing repositories...");
           let removedCount = 0;
           const errors: string[] = [];
 
@@ -125,13 +114,13 @@ export const cleanCommand = new Command("clean")
               `Remove repository '${chalk.cyan(repoInfo.name)}'?`,
             );
             if (!confirmed) {
-              console.log(chalk.yellow("Operation cancelled."));
+              showCancelled();
               return;
             }
           }
 
           // 删除仓库
-          const spinner = ora("Removing repository...").start();
+          const spinner = startSpinner("Removing repository...");
           await repository.remove(repoInfo.name);
           spinner.succeed("Repository removed successfully!");
           return;
@@ -152,16 +141,7 @@ export const cleanCommand = new Command("clean")
           `Use '${chalk.cyan("grf list")}' to see all cached repositories.`,
         );
       } catch (error) {
-        if (error instanceof GrfError) {
-          console.error(chalk.red(`${chalk.bold("✗")} ${error.message}`));
-        } else if (error instanceof Error) {
-          console.error(chalk.red(`${chalk.bold("✗")} ${error.message}`));
-        } else {
-          console.error(
-            chalk.red(`${chalk.bold("✗")} An unknown error occurred`),
-          );
-        }
-        process.exit(1);
+        handleError(error, { exit: true });
       }
     },
   );

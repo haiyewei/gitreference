@@ -6,24 +6,21 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import ora from "ora";
 import path from "path";
 import * as repository from "../core/repository.js";
 import * as filesystem from "../core/filesystem.js";
 import * as loading from "../core/loading.js";
-import { GrfError, ErrorCode } from "../types/index.js";
+import { startSpinner } from "../ui/spinner.js";
+import { shortCommit } from "../ui/format.js";
+import { handleError } from "../utils/error.js";
+import { isGitUrl } from "../utils/validation.js";
 
 /**
- * 检查字符串是否为 Git URL
- * 支持 HTTPS 和 SSH 格式
+ * 注册 load 命令
+ * @param program Commander 程序实例
  */
-function isGitUrl(str: string): boolean {
-  // HTTPS 格式: https://github.com/user/repo.git
-  const httpsRegex = /^https?:\/\/[^/]+\/[^/]+\/[^/]+/;
-  // SSH 格式: git@github.com:user/repo.git
-  const sshRegex = /^git@[^:]+:[^/]+\/[^/]+/;
-
-  return httpsRegex.test(str) || sshRegex.test(str);
+export function registerLoadCommand(program: Command): void {
+  program.addCommand(loadCommand);
 }
 
 export const loadCommand = new Command("load")
@@ -49,7 +46,7 @@ export const loadCommand = new Command("load")
 
       // 检查是否为 Git URL
       if (isGitUrl(name)) {
-        const addSpinner = ora("Adding repository...").start();
+        const addSpinner = startSpinner("Adding repository...");
 
         try {
           // 检查仓库是否已存在
@@ -71,28 +68,18 @@ export const loadCommand = new Command("load")
             addSpinner.succeed(chalk.green("Repository added successfully!"));
             console.log(`  ${chalk.gray("Name:")}     ${repoInfo.name}`);
             console.log(
-              `  ${chalk.gray("Commit:")}   ${repoInfo.commitId.substring(0, 7)}...`,
+              `  ${chalk.gray("Commit:")}   ${shortCommit(repoInfo.commitId)}...`,
             );
             console.log();
             repoName = repoInfo.name;
           }
         } catch (error) {
           addSpinner.fail(chalk.red("Failed to add repository"));
-
-          if (error instanceof GrfError) {
-            console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-          } else if (error instanceof Error) {
-            console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-          } else {
-            console.error(
-              chalk.red(`\n${chalk.bold("✗")} An unknown error occurred`),
-            );
-          }
-          process.exit(1);
+          handleError(error, { exit: true });
         }
       }
 
-      const spinner = ora("Copying repository...").start();
+      const spinner = startSpinner("Copying repository...");
 
       try {
         // 检查仓库是否存在
@@ -131,23 +118,7 @@ export const loadCommand = new Command("load")
             spinner.text = "Copying repository...";
           } catch (error) {
             spinner.fail(chalk.red(`Failed to switch branch`));
-            if (error instanceof GrfError) {
-              console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-              if (error.code === ErrorCode.GIT_CHECKOUT_FAILED) {
-                console.error(
-                  chalk.gray(
-                    `  Branch "${options.branch}" may not exist. Use ${chalk.cyan("git branch -r")} to list available branches.`,
-                  ),
-                );
-              }
-            } else if (error instanceof Error) {
-              console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-            } else {
-              console.error(
-                chalk.red(`\n${chalk.bold("✗")} An unknown error occurred`),
-              );
-            }
-            process.exit(1);
+            handleError(error, { exit: true });
           }
         }
 
@@ -180,7 +151,12 @@ export const loadCommand = new Command("load")
 
         // 复制文件（排除 .git 和 meta.json）
         await filesystem.copyDir(sourcePath, finalTargetPath, {
-          exclude: [".git", "meta.json", ".grf-meta.json"],
+          exclude: [
+            ".git",
+            "meta.json",
+            ".grf-meta.json",
+            ".gitreference-meta.json",
+          ],
           overwrite: true,
         });
 
@@ -226,46 +202,11 @@ export const loadCommand = new Command("load")
         console.log(`  ${chalk.gray("Source:")}   ${sourcePath}`);
         console.log(`  ${chalk.gray("Target:")}   ${finalTargetPath}`);
         console.log(
-          `  ${chalk.gray("Commit:")}   ${repoInfo.commitId.substring(0, 7)}...`,
+          `  ${chalk.gray("Commit:")}   ${shortCommit(repoInfo.commitId)}...`,
         );
       } catch (error) {
         spinner.fail(chalk.red("Failed to copy repository"));
-
-        if (error instanceof GrfError) {
-          console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-
-          // 提供更具体的错误提示
-          if (error.code === ErrorCode.REPO_NOT_FOUND) {
-            console.error(
-              chalk.gray(
-                `  Use ${chalk.cyan("grf add <url>")} to add a repository first.`,
-              ),
-            );
-          } else if (error.code === ErrorCode.FS_PATH_NOT_FOUND) {
-            console.error(
-              chalk.gray(
-                `  The source path does not exist. Please check the repository or subdirectory.`,
-              ),
-            );
-          } else if (error.code === ErrorCode.FS_PERMISSION_DENIED) {
-            console.error(
-              chalk.gray(
-                `  Permission denied. Please check your file permissions.`,
-              ),
-            );
-          }
-          process.exit(1);
-        }
-
-        // 未知错误
-        if (error instanceof Error) {
-          console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-        } else {
-          console.error(
-            chalk.red(`\n${chalk.bold("✗")} An unknown error occurred`),
-          );
-        }
-        process.exit(1);
+        handleError(error, { exit: true });
       }
     },
   );

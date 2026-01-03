@@ -5,13 +5,22 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import os from "os";
 import {
   readGlobalConfig,
   writeGlobalConfig,
   getConfigPath,
 } from "../core/config.js";
 import { GlobalConfig } from "../types/index.js";
+import { shortenPath, StatusIcon } from "../ui/format.js";
+import { handleError } from "../utils/error.js";
+
+/**
+ * 注册 config 命令
+ * @param program Commander 程序实例
+ */
+export function registerConfigCommand(program: Command): void {
+  program.addCommand(configCommand);
+}
 
 /** 有效的配置项列表 */
 const validKeys = ["defaultBranch", "shallowClone", "shallowDepth"] as const;
@@ -73,19 +82,6 @@ function formatValue(value: string | boolean | number | undefined): string {
     return chalk.cyan(String(value));
   }
   return chalk.cyan(value);
-}
-
-/**
- * 将路径中的 home 目录替换为 ~
- * @param filePath 文件路径
- * @returns 替换后的路径
- */
-function shortenPath(filePath: string): string {
-  const home = os.homedir();
-  if (filePath.startsWith(home)) {
-    return "~" + filePath.slice(home.length);
-  }
-  return filePath;
 }
 
 /**
@@ -161,36 +157,18 @@ export const configCommand = new Command("config")
         }
 
         // 有 key 和 value: 设置配置项
-        try {
-          const parsedValue = parseValue(key, value);
+        const parsedValue = parseValue(key, value);
 
-          // 更新配置
-          (config as unknown as Record<string, unknown>)[key] = parsedValue;
-          await writeGlobalConfig(config);
+        // 更新配置
+        (config as unknown as Record<string, unknown>)[key] = parsedValue;
+        await writeGlobalConfig(config);
 
-          console.log(
-            chalk.green("✓") +
-              ` Configuration updated: ${chalk.white(key)} = ${formatValue(parsedValue)}`,
-          );
-        } catch (error) {
-          if (error instanceof Error) {
-            console.error(chalk.red(`${chalk.bold("✗")} ${error.message}`));
-          } else {
-            console.error(
-              chalk.red(`${chalk.bold("✗")} Failed to set configuration`),
-            );
-          }
-          process.exit(1);
-        }
+        console.log(
+          StatusIcon.success +
+            ` Configuration updated: ${chalk.white(key)} = ${formatValue(parsedValue)}`,
+        );
       } catch (error) {
-        if (error instanceof Error) {
-          console.error(chalk.red(`${chalk.bold("✗")} ${error.message}`));
-        } else {
-          console.error(
-            chalk.red(`${chalk.bold("✗")} An unknown error occurred`),
-          );
-        }
-        process.exit(1);
+        handleError(error, { exit: true });
       }
     },
   );

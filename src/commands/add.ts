@@ -5,9 +5,18 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import ora from "ora";
 import * as repository from "../core/repository.js";
-import { GrfError } from "../types/index.js";
+import { startSpinner } from "../ui/spinner.js";
+import { shortCommit } from "../ui/format.js";
+import { handleError } from "../utils/error.js";
+
+/**
+ * 注册 add 命令
+ * @param program Commander 程序实例
+ */
+export function registerAddCommand(program: Command): void {
+  program.addCommand(addCommand);
+}
 
 export const addCommand = new Command("add")
   .description("Add a reference repository")
@@ -27,7 +36,7 @@ export const addCommand = new Command("add")
         depth: string;
       },
     ) => {
-      const spinner = ora("Cloning repository...").start();
+      const spinner = startSpinner("Cloning repository...");
 
       try {
         const repoInfo = await repository.add(url, {
@@ -47,25 +56,12 @@ export const addCommand = new Command("add")
           console.log(`  ${chalk.gray("Branch:")}   ${repoInfo.branch}`);
         }
         console.log(
-          `  ${chalk.gray("Commit:")}   ${repoInfo.commitId.substring(0, 7)}...`,
+          `  ${chalk.gray("Commit:")}   ${shortCommit(repoInfo.commitId)}...`,
         );
       } catch (error) {
         spinner.fail(chalk.red("Failed to add repository"));
-
-        if (error instanceof GrfError) {
-          console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-          process.exit(1);
-        }
-
-        // 未知错误
-        if (error instanceof Error) {
-          console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-        } else {
-          console.error(
-            chalk.red(`\n${chalk.bold("✗")} An unknown error occurred`),
-          );
-        }
-        process.exit(1);
+        console.error();
+        handleError(error, { exit: true });
       }
     },
   );

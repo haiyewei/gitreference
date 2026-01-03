@@ -117,7 +117,7 @@ export async function getSyncStatus(
 export async function getAllSyncStatus(
   projectRoot: string = process.cwd(),
 ): Promise<SyncStatus[]> {
-  const entries = await loading.getEntries(projectRoot);
+  const entries = await loading.getEntries();
   const statusList: SyncStatus[] = [];
 
   for (const entry of entries) {
@@ -199,13 +199,9 @@ export async function syncEntry(
     });
 
     // 更新 loading.json 中的 commitId 和 updatedAt
-    await loading.updateEntry(
-      entry.id,
-      {
-        commitId: cacheCommitId,
-      },
-      projectRoot,
-    );
+    await loading.updateEntry(entry.id, {
+      commitId: cacheCommitId,
+    });
 
     result.success = true;
     result.message = `同步成功: ${entry.commitId.substring(0, 7)} → ${cacheCommitId.substring(0, 7)}`;
@@ -228,7 +224,7 @@ export async function syncAll(
   force: boolean = false,
   projectRoot: string = process.cwd(),
 ): Promise<SyncResult[]> {
-  const entries = await loading.getEntries(projectRoot);
+  const entries = await loading.getEntries();
   const results: SyncResult[] = [];
 
   for (const entry of entries) {

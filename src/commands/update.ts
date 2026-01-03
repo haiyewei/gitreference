@@ -1,15 +1,13 @@
 /**
  * update 命令
- * 更新缓存的仓库到最新版本，并可选同步到工作目录
+ * 更新缓存的仓库到最新版本，可选同步到工作区
  */
 
 import { Command } from "commander";
 import chalk from "chalk";
-import ora from "ora";
 import * as repository from "../core/repository.js";
 import * as git from "../core/git.js";
 import { readRepoMeta, writeRepoMeta } from "../core/config.js";
-import { GrfError } from "../types/index.js";
 import type { RepoInfo } from "../core/repository.js";
 import {
   getAllSyncStatus,
@@ -17,6 +15,17 @@ import {
   type SyncStatus,
   type SyncResult,
 } from "../core/sync.js";
+import { shortCommit } from "../ui/format.js";
+import { startSpinner, createSpinner } from "../ui/spinner.js";
+import { handleError } from "../utils/error.js";
+
+/**
+ * 注册 update 命令
+ * @param program Commander 程序实例
+ */
+export function registerUpdateCommand(program: Command): void {
+  program.addCommand(updateCommand);
+}
 
 /**
  * 更新结果状态
@@ -31,11 +40,11 @@ interface UpdateResult {
   name: string;
   /** 更新状态 */
   status: UpdateStatus;
-  /** 旧 commit ID（仅当 status 为 'updated' 时） */
+  /** 旧的 commit ID（仅当状态为 'updated' 时） */
   oldCommit?: string;
-  /** 新 commit ID（仅当 status 为 'updated' 时） */
+  /** 新的 commit ID（仅当状态为 'updated' 时） */
   newCommit?: string;
-  /** 错误信息（仅当 status 为 'error' 时） */
+  /** 错误消息（仅当状态为 'error' 时） */
   error?: string;
 }
 
@@ -53,7 +62,7 @@ async function updateRepo(
   const oldCommit = repoInfo.commitId;
 
   try {
-    // 检查是否有更新
+    // 检查更新
     const hasUpdates = await git.hasUpdates(repoPath);
 
     if (!hasUpdates) {
@@ -91,13 +100,6 @@ async function updateRepo(
       error: errorMessage,
     };
   }
-}
-
-/**
- * 格式化 commit ID（取前 7 位）
- */
-function shortCommit(commitId: string): string {
-  return commitId.substring(0, 7);
 }
 
 /**
@@ -139,29 +141,31 @@ function getStatusText(result: UpdateResult): string {
  */
 function getSyncStatusText(status: SyncStatus): string {
   if (!status.cacheExists) {
-    return chalk.gray("缓存不存在");
+    return chalk.gray("cache not found");
   }
   if (status.needsSync) {
-    return chalk.yellow("需要同步");
+    return chalk.yellow("needs sync");
   }
-  return chalk.green("已是最新");
+  return chalk.green("up to date");
 }
 
 /**
- * 显示工作目录同步状态
+ * 显示工作区同步状态
  */
 async function showSyncStatus(): Promise<void> {
   const statusList = await getAllSyncStatus();
 
   if (statusList.length === 0) {
-    console.log(chalk.yellow("没有已加载的参考代码。"));
+    console.log(chalk.yellow("No loaded reference code."));
     console.log(
-      chalk.gray("\n使用 `grf load <name>` 加载参考代码到工作目录。"),
+      chalk.gray(
+        "\nUse `grf load <name>` to load reference code to workspace.",
+      ),
     );
     return;
   }
 
-  console.log(chalk.bold("工作目录同步状态:\n"));
+  console.log(chalk.bold("Workspace sync status:\n"));
 
   // 计算列宽
   const repoColWidth =
@@ -172,11 +176,11 @@ async function showSyncStatus(): Promise<void> {
 
   // 表头
   console.log(
-    chalk.gray("仓库".padEnd(repoColWidth)) +
-      chalk.gray("目标路径".padEnd(pathColWidth)) +
-      chalk.gray("加载版本".padEnd(commitColWidth)) +
-      chalk.gray("缓存版本".padEnd(commitColWidth)) +
-      chalk.gray("状态"),
+    chalk.gray("REPO".padEnd(repoColWidth)) +
+      chalk.gray("TARGET PATH".padEnd(pathColWidth)) +
+      chalk.gray("LOADED".padEnd(commitColWidth)) +
+      chalk.gray("CACHED".padEnd(commitColWidth)) +
+      chalk.gray("STATUS"),
   );
 
   // 分隔线
@@ -211,14 +215,14 @@ async function showSyncStatus(): Promise<void> {
 
   console.log();
   console.log(
-    `共 ${statusList.length} 个参考，${needsSyncCount} 个需要同步` +
-      (cacheMissingCount > 0 ? `，${cacheMissingCount} 个缓存不存在` : ""),
+    `Total ${statusList.length} references, ${needsSyncCount} need sync` +
+      (cacheMissingCount > 0 ? `, ${cacheMissingCount} cache not found` : ""),
   );
 
   if (needsSyncCount > 0) {
     console.log(
       chalk.gray(
-        "\n使用 `grf update --sync` 或 `grf update --sync-only` 同步到工作目录。",
+        "\nUse `grf update --sync` or `grf update --sync-only` to sync to workspace.",
       ),
     );
   }
@@ -246,19 +250,19 @@ function displaySyncResults(results: SyncResult[]): void {
 
   console.log();
   console.log(
-    `同步完成: ${successCount} 成功` +
-      (failCount > 0 ? `, ${failCount} 失败` : ""),
+    `Sync complete: ${successCount} succeeded` +
+      (failCount > 0 ? `, ${failCount} failed` : ""),
   );
 }
 
 /**
- * 显示 dry-run 模式下将要执行的操作
+ * 在 dry-run 模式下显示将要执行的操作
  */
 async function showDryRunSync(force: boolean): Promise<void> {
   const statusList = await getAllSyncStatus();
 
   if (statusList.length === 0) {
-    console.log(chalk.yellow("没有已加载的参考代码。"));
+    console.log(chalk.yellow("No loaded reference code."));
     return;
   }
 
@@ -267,11 +271,15 @@ async function showDryRunSync(force: boolean): Promise<void> {
     : statusList.filter((s) => s.needsSync && s.cacheExists);
 
   if (toSync.length === 0) {
-    console.log(chalk.green("所有参考代码已是最新，无需同步。"));
+    console.log(
+      chalk.green("All reference code is up to date, no sync needed."),
+    );
     return;
   }
 
-  console.log(chalk.bold("[Dry Run] 将要执行以下同步操作:\n"));
+  console.log(
+    chalk.bold("[Dry Run] Will execute the following sync operations:\n"),
+  );
 
   for (const status of toSync) {
     const oldCommit = shortCommit(status.loadedCommitId);
@@ -279,7 +287,7 @@ async function showDryRunSync(force: boolean): Promise<void> {
 
     if (status.loadedCommitId === status.cacheCommitId) {
       console.log(
-        chalk.gray(`  - ${status.repoName}: 强制重新同步 (${oldCommit})`),
+        chalk.gray(`  - ${status.repoName}: force re-sync (${oldCommit})`),
       );
     } else {
       console.log(
@@ -291,7 +299,7 @@ async function showDryRunSync(force: boolean): Promise<void> {
   console.log();
   console.log(
     chalk.gray(
-      "这是试运行模式，未执行实际操作。移除 --dry-run 选项以执行同步。",
+      "This is dry-run mode, no actual operations performed. Remove --dry-run option to execute sync.",
     ),
   );
 }
@@ -332,19 +340,19 @@ export const updateCommand = new Command("update")
         return;
       }
 
-      // --sync-only: 仅同步工作目录，不更新缓存
+      // --sync-only: 仅同步工作区，不更新缓存
       if (syncOnly) {
         if (dryRun) {
           await showDryRunSync(force);
           return;
         }
 
-        const spinner = ora("正在同步到工作目录...").start();
+        const spinner = startSpinner("Syncing to workspace...");
         const results = await syncAll(force);
         spinner.stop();
 
         if (results.length === 0) {
-          console.log(chalk.yellow("没有已加载的参考代码。"));
+          console.log(chalk.yellow("No loaded reference code."));
           return;
         }
 
@@ -359,7 +367,7 @@ export const updateCommand = new Command("update")
 
       if (name) {
         // 更新单个仓库
-        const spinner = ora("Checking for updates...").start();
+        const spinner = startSpinner("Checking for updates...");
 
         const repoInfo = await repository.get(name);
         if (!repoInfo) {
@@ -405,18 +413,22 @@ export const updateCommand = new Command("update")
             `  ${chalk.gray("New Commit:")} ${shortCommit(result.newCommit!)}...`,
           );
 
-          // --sync: 更新后同步到工作目录
+          // --sync: 更新后同步到工作区
           if (doSync) {
             console.log();
             if (dryRun) {
-              console.log(chalk.bold("[Dry Run] 将要同步到工作目录..."));
-              console.log(chalk.gray("这是试运行模式，未执行实际操作。"));
+              console.log(chalk.bold("[Dry Run] Will sync to workspace..."));
+              console.log(
+                chalk.gray(
+                  "This is dry-run mode, no actual operations performed.",
+                ),
+              );
             } else {
-              const syncSpinner = ora("正在同步到工作目录...").start();
+              const syncSpinner = startSpinner("Syncing to workspace...");
               const syncResults = await syncAll(force);
               syncSpinner.stop();
 
-              // 只显示与当前仓库相关的同步结果
+              // 仅显示与当前仓库相关的同步结果
               const relevantResults = syncResults.filter(
                 (r) =>
                   r.repoName === repoInfo.name || r.repoName.includes(name),
@@ -425,7 +437,7 @@ export const updateCommand = new Command("update")
               if (relevantResults.length > 0) {
                 displaySyncResults(relevantResults);
               } else {
-                console.log(chalk.gray("没有需要同步的工作目录条目。"));
+                console.log(chalk.gray("No workspace entries need syncing."));
               }
             }
           }
@@ -439,7 +451,7 @@ export const updateCommand = new Command("update")
         ) {
           console.log();
           if (dryRun) {
-            console.log(chalk.bold("[Dry Run] 将要同步到工作目录..."));
+            console.log(chalk.bold("[Dry Run] Will sync to workspace..."));
             const statusList = await getAllSyncStatus();
             const relevantStatus = statusList.filter(
               (s) => s.repoName === repoInfo.name || s.repoName.includes(name),
@@ -460,11 +472,15 @@ export const updateCommand = new Command("update")
                 }
               }
             } else {
-              console.log(chalk.gray("没有需要同步的工作目录条目。"));
+              console.log(chalk.gray("No workspace entries need syncing."));
             }
-            console.log(chalk.gray("\n这是试运行模式，未执行实际操作。"));
+            console.log(
+              chalk.gray(
+                "\nThis is dry-run mode, no actual operations performed.",
+              ),
+            );
           } else {
-            const syncSpinner = ora("正在同步到工作目录...").start();
+            const syncSpinner = startSpinner("Syncing to workspace...");
             const syncResults = await syncAll(force);
             syncSpinner.stop();
 
@@ -475,7 +491,7 @@ export const updateCommand = new Command("update")
             if (relevantResults.length > 0) {
               displaySyncResults(relevantResults);
             } else {
-              console.log(chalk.gray("没有需要同步的工作目录条目。"));
+              console.log(chalk.gray("No workspace entries need syncing."));
             }
           }
         }
@@ -498,7 +514,7 @@ export const updateCommand = new Command("update")
         const results: UpdateResult[] = [];
 
         for (const repo of repos) {
-          const spinner = ora(`  ${repo.name}`).start();
+          const spinner = createSpinner(`  ${repo.name}`).start();
           const result = await updateRepo(repo, checkOnly);
           results.push(result);
 
@@ -553,17 +569,19 @@ export const updateCommand = new Command("update")
           process.exit(1);
         }
 
-        // --sync: 更新后同步到工作目录
+        // --sync: 更新后同步到工作区
         if (doSync && !checkOnly) {
           console.log();
           if (dryRun) {
             await showDryRunSync(force);
           } else {
-            console.log(chalk.bold("正在同步到工作目录...\n"));
+            console.log(chalk.bold("Syncing to workspace...\n"));
             const syncResults = await syncAll(force);
 
             if (syncResults.length === 0) {
-              console.log(chalk.gray("没有已加载的参考代码需要同步。"));
+              console.log(
+                chalk.gray("No loaded reference code needs syncing."),
+              );
             } else {
               displaySyncResults(syncResults);
 
@@ -578,19 +596,6 @@ export const updateCommand = new Command("update")
         }
       }
     } catch (error) {
-      if (error instanceof GrfError) {
-        console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-        process.exit(1);
-      }
-
-      // 未知错误
-      if (error instanceof Error) {
-        console.error(chalk.red(`\n${chalk.bold("✗")} ${error.message}`));
-      } else {
-        console.error(
-          chalk.red(`\n${chalk.bold("✗")} An unknown error occurred`),
-        );
-      }
-      process.exit(1);
+      handleError(error, { exit: true });
     }
   });
