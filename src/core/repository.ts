@@ -54,12 +54,14 @@ export interface RepoInfo {
  * 解析后的仓库 URL 信息
  */
 export interface ParsedRepoUrl {
-  /** 主机名（如 github.com） */
+  /** 主机名（如 github.com 或 127.0.0.1:3087） */
   host: string;
   /** 所有者/组织名 */
   owner: string;
   /** 仓库名 */
   repo: string;
+  /** 端口号（如果有） */
+  port?: string;
 }
 
 /**
@@ -82,12 +84,23 @@ export function parseRepoUrl(url: string): ParsedRepoUrl {
   // 去除首尾空白
   url = url.trim();
 
-  // HTTPS 格式: https://github.com/user/repo.git
+  // HTTPS 格式: https://github.com/user/repo.git 或 http://127.0.0.1:3087/user/repo.git
   const httpsRegex = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?$/;
   const httpsMatch = httpsRegex.exec(url);
   if (httpsMatch) {
+    const hostWithPort = httpsMatch[1];
+    // 分离主机名和端口号
+    const portMatch = /^(.+):(\d+)$/.exec(hostWithPort);
+    if (portMatch) {
+      return {
+        host: portMatch[1],
+        port: portMatch[2],
+        owner: httpsMatch[2],
+        repo: httpsMatch[3].replace(/\.git$/, ""),
+      };
+    }
     return {
-      host: httpsMatch[1],
+      host: hostWithPort,
       owner: httpsMatch[2],
       repo: httpsMatch[3].replace(/\.git$/, ""),
     };
@@ -118,19 +131,25 @@ export function parseRepoUrl(url: string): ParsedRepoUrl {
  * @example
  * getRepoStoragePath('https://github.com/facebook/react.git')
  * // -> ~/.gitreference/repos/github.com/facebook/react
+ *
+ * getRepoStoragePath('http://127.0.0.1:3087/donghai/repo.git')
+ * // -> ~/.gitreference/repos/127.0.0.1_3087/donghai/repo
  */
 export function getRepoStoragePath(url: string): string {
-  const { host, owner, repo } = parseRepoUrl(url);
-  return path.join(getReposRoot(), host, owner, repo);
+  const { host, port, owner, repo } = parseRepoUrl(url);
+  // 如果有端口号，将其附加到主机名后，使用下划线分隔（避免 Windows 路径中的冒号问题）
+  const hostDir = port ? `${host}_${port}` : host;
+  return path.join(getReposRoot(), hostDir, owner, repo);
 }
 
 /**
  * 根据解析后的 URL 信息生成仓库名称
  * @param parsed 解析后的 URL 信息
- * @returns 仓库名称（格式: host/owner/repo）
+ * @returns 仓库名称（格式: host/owner/repo 或 host_port/owner/repo）
  */
 function getRepoName(parsed: ParsedRepoUrl): string {
-  return `${parsed.host}/${parsed.owner}/${parsed.repo}`;
+  const hostPart = parsed.port ? `${parsed.host}_${parsed.port}` : parsed.host;
+  return `${hostPart}/${parsed.owner}/${parsed.repo}`;
 }
 
 /**
