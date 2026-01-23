@@ -116,7 +116,7 @@ export const PATTERNS = {
   /** 非法文件名字符 */
   INVALID_FILENAME_CHARS: /[<>:"|?*\x00-\x1f]/,
   /** 非法分支名字符 */
-  INVALID_BRANCH_CHARS: /[\s~^:?*\[\]\\@{}\x00-\x1f\x7f]/,
+  INVALID_BRANCH_CHARS: /[\s~^:?*[\]\\@{}\x00-\x1f\x7f]/,
 } as const;
 
 /**

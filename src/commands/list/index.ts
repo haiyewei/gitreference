@@ -3,6 +3,7 @@
  * 列出所有缓存的仓库或当前项目已加载的引用代码
  */
 
+import * as path from "path";
 import { Command, Option } from "commander";
 import * as repository from "../../core/repository.js";
 import * as loading from "../../core/loading.js";
@@ -84,7 +85,16 @@ export const listCommand = new Command("list")
  * @param options 命令选项
  */
 async function handleListLoad(options: ListOptions): Promise<void> {
-  const loadedEntries = await loading.getEntries();
+  const allEntries = await loading.getEntries();
+  const currentDir = process.cwd();
+
+  // 过滤当前工作目录中的条目
+  const loadedEntries = allEntries.filter((entry) => {
+    if (!entry.workingDirectory) return false;
+    return (
+      path.normalize(entry.workingDirectory) === path.normalize(currentDir)
+    );
+  });
 
   // 构建上下文
   const context: ListLoadContext = {

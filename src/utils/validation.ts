@@ -130,7 +130,7 @@ export function validateBranchName(branch: string): ValidationResult {
   }
 
   // 不能包含特殊字符
-  const invalidChars = /[\s~^:?*\[\]\\@{}\x00-\x1f\x7f]/;
+  const invalidChars = /[\s~^:?*[\]\\@{}\x00-\x1f\x7f]/;
   if (invalidChars.test(branch)) {
     return { valid: false, message: "Branch name contains invalid characters" };
   }

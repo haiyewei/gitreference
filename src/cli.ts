@@ -7,7 +7,9 @@ import { registerAllCommands } from "./commands/index.js";
 
 // 读取 package.json 获取版本号
 const packageJsonPath = path.join(__dirname, "..", "package.json");
-const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {
+  version: string;
+};
 
 const program = new Command();
 

@@ -73,7 +73,7 @@ export class LoadingStateManager {
 
     try {
       const content = await fs.readFile(filePath, "utf-8");
-      const parsed = JSON.parse(content);
+      const parsed = JSON.parse(content) as Partial<LoadingStateIndex>;
 
       // 验证数据格式，确保 loadedRepos 字段存在
       // 兼容旧格式文件（可能包含 version 和 entries 而不是 loadedRepos）
